@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- mini_agent project-specific ---
+# Runtime session data & traces
+sessions/
+# Local vector store cache
+.chroma/
