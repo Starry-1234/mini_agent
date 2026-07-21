@@ -265,15 +265,147 @@ mini_agent/
 │       ├── plans/                 # implementation plan (untracked)
 │       └── specs/
 │           └── 2026-07-21-mini-agent-design.md
-├── sessions/                      # runtime: <sid>.json + <sid>.trace.jsonl
+├── sessions/                      # runtime: <sid>.json + <sid>.trace.jsonl (gitignored)
 ├── .env.example
 ├── requirements.txt
 ├── pyproject.toml
+├── Dockerfile                     # python:3.12-slim, non-root, tini PID 1
+├── docker-compose.yml             # agent service, env_file, sessions volume
+├── .dockerignore
 └── README.md                      # this file
 ```
 
 ---
 
-## 6. License
+## 6. Deploy with Docker
+
+容器化部署是推荐的运行方式。镜像基于 `python:3.12-slim`，非 root 用户运行，会话数据落在挂载卷里。
+
+### 6.1 前置条件
+
+- Docker Desktop（或 Linux 上的 Docker Engine）已安装并运行
+- 一个 OpenAI-compatible 的 LLM endpoint（base_url + api_key + model 名）
+- 可选：一个 OpenAI-compatible 的 embedding endpoint
+
+### 6.2 配置 `.env`
+
+```bash
+cp .env.example .env
+# 用编辑器填入：
+#   LLM_BASE_URL=https://...
+#   LLM_API_KEY=...
+#   LLM_MODEL=...
+#   EMBED_BASE_URL=...   （可选；不填则用 MockEmbedder）
+#   EMBED_API_KEY=...
+#   EMBED_MODEL=...
+```
+
+`.env` 已在 `.gitignore` 里，**不会被提交**。`docker compose` 会自动加载。
+
+### 6.3 构建并运行
+
+```bash
+# 构建镜像（首次或改代码后）
+docker compose build
+
+# 方式 A：单次问答
+docker compose run --rm agent --session test --once "what is 2+2?"
+
+# 方式 B：交互模式（REPL）
+docker compose run --rm agent --session test
+> What's the weather in Beijing?
+> Add a todo: buy milk
+> exit
+
+# 方式 C：自动中文命名（不传 --session）
+docker compose run --rm agent
+> 查北京天气并记待办
+[session auto-named to: 天气查询 — use --session 天气查询 to continue next time]
+> exit
+```
+
+### 6.4 多窗口隔离
+
+每个 `--session` 是独立 JSON 文件，完全隔离。开多个窗口：
+
+```bash
+# 终端 1
+docker compose run --rm agent --session 天气
+
+# 终端 2
+docker compose run --rm agent --session weekly
+```
+
+两个 session 互不串味。退出后 session 文件保留在 `./sessions/`。
+
+### 6.5 持久化
+
+- **会话数据** 落在宿主 `./sessions/`，镜像删除/重建不影响
+- **Chroma 向量库**（如果用）也落在宿主 `./sessions/.chroma/`
+- 重启容器后，session 历史、todos、长期 memory 全部还在
+
+### 6.6 查看 trace
+
+```bash
+# 列出会话文件
+ls sessions/
+
+# 看某次会话的 trace（彩色 terminal 输出版）
+tail -f sessions/<id>.trace.jsonl | python -m json.tool --no-ensure-ascii
+```
+
+trace 包含：user、thought（含 reasoning）、tool_call、tool_result、assistant、recall、error。
+
+### 6.7 离线/演示模式
+
+不连真实 LLM，验证流程是否工作：
+
+```bash
+# 跑 demo 脚本
+docker compose run --rm --entrypoint python agent demo/demo_weather_todo.py --mock --sessions /app/sessions
+
+# CLI 加 --mock
+docker compose run --rm --entrypoint "" agent python cli.py --mock --session demo --once "what is 2+2?"
+```
+
+### 6.8 可选后端服务
+
+`docker-compose.yml` 默认只起 `agent` 一个服务。生产/分布式需要时，**取消注释** 即可启用 qdrant（向量库）和 redis（短期记忆）：
+
+```bash
+# 编辑 docker-compose.yml，去掉 qdrant / redis 服务的注释
+# 同时改 .env:
+#   SHORT_TERM_BACKEND=redis
+#   REDIS_URL=redis://redis:6379/0
+#   VECTOR_BACKEND=qdrant
+#   QDRANT_URL=http://qdrant:6333
+
+docker compose up -d agent qdrant redis
+```
+
+### 6.9 故障排查
+
+| 症状 | 原因 / 修复 |
+|---|---|
+| `LLM_API_KEY is required` | `.env` 没填或字段名拼错；确认 `LLM_API_KEY=...`（无空格） |
+| `error during connect: ... dockerDesktopLinuxEngine` | Docker Desktop 没启动 → 系统托盘启动 |
+| `Connection was reset` / `Failed to connect to github` | 走代理；设 `git config --global http.https://github.com.proxy http://127.0.0.1:<port>` |
+| Windows 控制台打印 emoji/CJK 报错 | 镜像已强制 UTF-8；本地是 `cli.py` 直接运行时（不走容器）才需要 `set PYTHONUTF8=1` |
+| Chroma 启动时下载 79MB ONNX 模型 | 首次创建 collection 触发，之后缓存到 `~/.cache/chroma/onnx_models/` |
+
+### 6.10 不用 Docker（开发者本地跑）
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python cli.py --session test --once "what is 2+2?"
+```
+
+容器是推荐方式；本地直接 python 跑也能用，但 chromadb / 部分二进制依赖在你的本地 Python 环境可能装不上（pip Scripts 锁定等问题）。Docker 是最省心的路径。
+
+---
+
+## 7. License
 
 See `LICENSE`.

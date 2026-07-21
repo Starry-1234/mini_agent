@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -28,7 +28,7 @@ class TraceLogger:
         self._fh = self.path.open("a", encoding="utf-8")
 
     def event(self, kind: str, **fields) -> None:
-        record = {"ts": datetime.utcnow().isoformat() + "Z", "kind": kind, **fields}
+        record = {"ts": datetime.now(timezone.utc).isoformat(), "kind": kind, **fields}
         self._fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._fh.flush()
         self._print(kind, fields)
