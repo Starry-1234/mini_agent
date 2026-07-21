@@ -1,7 +1,6 @@
 """End-to-end demo: query weather, then add todos. Use --mock for CI / recording without API."""
 from __future__ import annotations
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -26,18 +25,23 @@ def main() -> int:
 
     settings = Settings.from_env(sessions_dir=Path(args.sessions))
     if args.mock:
-        # Script a couple of turns for the demo: ask weather → call weather tool; ask todos → use todo tool; final.
+        # Script both demo turns. Each turn ends with an extractor call (memory.remember_sid ->
+        # extract_facts -> llm.chat), so every turn needs an extra response returning "[]" (no facts).
+        # Turn 1: weather tool_call, weather answer, extractor.
+        # Turn 2: todo tool_call, todo answer, extractor.
         llm = MockLLMClient(chat_responses=[
             {"choices": [{"message": {"role": "assistant", "content": "checking weather",
                                        "tool_calls": [{"id": "c1", "type": "function",
                                                        "function": {"name": "weather",
                                                                     "arguments": '{"city":"beijing"}'}}]}}]},
             {"choices": [{"message": {"role": "assistant", "content": "Beijing is sunny 26°C."}}]},
+            {"choices": [{"message": {"role": "assistant", "content": "[]"}}]},
             {"choices": [{"message": {"role": "assistant", "content": "adding todos",
                                        "tool_calls": [{"id": "c2", "type": "function",
                                                        "function": {"name": "todo",
                                                                     "arguments": '{"action":"add","text":"buy umbrella"}'}}]}}]},
             {"choices": [{"message": {"role": "assistant", "content": "Done. Added 1 todo."}}]},
+            {"choices": [{"message": {"role": "assistant", "content": "[]"}}]},
         ])
     else:
         llm = LLMClient(api_key=settings.llm_api_key, base_url=settings.llm_base_url, model=settings.llm_model)
