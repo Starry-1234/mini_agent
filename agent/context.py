@@ -13,6 +13,15 @@ class ContextBuilder:
         self.summarizer = summarizer  # optional LLMClient for summaries
 
     def build(self, session: Session, user_input: str) -> tuple[list[dict], list[dict]]:
+        """Build the LLM context for this turn.
+
+        `user_input` is REQUIRED. The builder is the source of truth for the
+        current LLM context: it appends the user input to the session (so the
+        caller does NOT pre-add it) and includes it as the last message.
+        """
+        # Record the user input as part of the session history.
+        session.add_user(user_input)
+
         msgs: list[dict] = [{"role": "system", "content": session.system_prompt}]
 
         # Recall relevant memory and inject as a system block (recall timing & placement)
@@ -23,7 +32,10 @@ class ContextBuilder:
                 lines.append(f"- {text}")
             msgs.append({"role": "system", "content": "\n".join(lines)})
 
-        # Compress older history if over threshold
+        # Compress older history if over threshold.
+        # The newly-appended user message is at the tail, so compress everything
+        # except the most recent `recent_keep` entries (which keeps the live
+        # user turn intact).
         history = list(session.messages)
         if len(history) > self.settings.context_max_messages and self.summarizer is not None:
             keep = self.settings.recent_keep
@@ -35,7 +47,7 @@ class ContextBuilder:
             msgs.append({"role": "system", "content": f"Conversation so far (summary):\n{session.summary}"})
 
         msgs.extend(history)
-        msgs.append({"role": "user", "content": user_input})
+        # The last message is now the user input (appended to session.messages above).
         return msgs, []  # tool schemas injected by runtime
 
     def _summarize(self, older: list[dict], prev_summary: str) -> str:

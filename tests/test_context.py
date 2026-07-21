@@ -15,11 +15,12 @@ def make_cb(tmp_path):
 def test_build_basic(tmp_path):
     cb = make_cb(tmp_path)
     sess = Session(id="s")
-    sess.add_user("hi")
     msgs, tools = cb.build(sess, "what's up?")
     assert msgs[0]["role"] == "system"
     assert msgs[-1] == {"role": "user", "content": "what's up?"}
     assert isinstance(tools, list)
+    # Builder records the user input on the session itself.
+    assert sess.messages[-1] == {"role": "user", "content": "what's up?"}
 
 def test_context_triggers_summary_when_long(tmp_path):
     cb = make_cb(tmp_path)
@@ -38,3 +39,5 @@ def test_context_triggers_summary_when_long(tmp_path):
     # summary appears as a system message after the first system
     sys_msgs = [m for m in msgs if m["role"] == "system"]
     assert any("summary text" in m["content"] for m in sys_msgs)
+    # Builder also recorded the new user turn on the session.
+    assert sess.messages[-1] == {"role": "user", "content": "next q"}
