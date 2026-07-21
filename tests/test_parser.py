@@ -1,4 +1,4 @@
-from agent.parser import parse_response, ParsedResponse
+from agent.parser import parse_response, ParsedResponse, _strip_thinking
 
 def test_parses_tool_calls_and_thought():
     raw = {
@@ -27,3 +27,25 @@ def test_parses_final_answer():
     p = parse_response(raw)
     assert p.final_answer == "Hello there."
     assert p.tool_calls == []
+
+
+def test_final_answer_strips_thinking_block():
+    raw = {"choices": [{"message": {
+        "role": "assistant",
+        "content": "<think>The user is asking a math question.</think>\n\n2 + 2 = **4**",
+    }}]}
+    p = parse_response(raw)
+    assert p.final_answer == "2 + 2 = **4**"
+    # thought keeps the reasoning for the trace log
+    assert "<think>" in p.thought
+
+
+def test_strip_thinking_helper():
+    # Case-insensitive tag, multiline, multiple blocks.
+    text = "<THINK>line1\nline2</THINK>answer<think>more</think> tail"
+    assert _strip_thinking(text) == "answer tail"
+    # Empty after stripping -> None
+    assert _strip_thinking("<think>only reasoning</think>") is None
+    assert _strip_thinking("") is None
+    # No block -> unchanged (trimmed)
+    assert _strip_thinking("  plain  ") == "plain"

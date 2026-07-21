@@ -19,6 +19,26 @@ class ParsedResponse:
     final_answer: str | None
 
 
+_THINK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def _strip_thinking(text: str) -> str | None:
+    """Remove <think>...</think> reasoning blocks from a final answer.
+
+    Reasoning models (MiniMax-M3, DeepSeek-R1, GLM-Z1, ...) prefix their
+    answer with a `<think>...</think>` block. We keep that in `thought`
+    (trace visibility) but must strip it from what the user sees.
+
+    Match is case-insensitive on the tag name, spans newlines, and is
+    non-greedy so multiple blocks are each removed. Leading/trailing
+    whitespace left behind is stripped. Returns None if nothing remains.
+    """
+    if not text:
+        return None
+    cleaned = _THINK_RE.sub("", text).strip()
+    return cleaned or None
+
+
 def parse_response(raw: dict) -> ParsedResponse:
     msg = raw["choices"][0]["message"]
     thought = msg.get("content") or ""
@@ -38,7 +58,7 @@ def parse_response(raw: dict) -> ParsedResponse:
     fb = _text_fallback(thought)
     if fb is not None:
         return ParsedResponse(thought=thought, tool_calls=[fb], final_answer=None)
-    return ParsedResponse(thought=thought, tool_calls=[], final_answer=thought or None)
+    return ParsedResponse(thought=thought, tool_calls=[], final_answer=_strip_thinking(thought))
 
 
 def _text_fallback(text: str) -> ToolCall | None:

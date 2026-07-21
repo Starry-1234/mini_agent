@@ -15,13 +15,13 @@ class ContextBuilder:
     def build(self, session: Session, user_input: str) -> tuple[list[dict], list[dict]]:
         """Build the LLM context for this turn.
 
-        `user_input` is REQUIRED. The builder is the source of truth for the
-        current LLM context: it appends the user input to the session (so the
-        caller does NOT pre-add it) and includes it as the last message.
+        `user_input` is REQUIRED and used as the memory-recall query. The
+        builder does NOT mutate the session: the caller (runtime.run_turn) is
+        responsible for calling `session.add_user(user_input)` exactly ONCE
+        before the tool loop. This method may be called multiple times per
+        turn (once per LLM iteration), so it must be side-effect free with
+        respect to session history.
         """
-        # Record the user input as part of the session history.
-        session.add_user(user_input)
-
         msgs: list[dict] = [{"role": "system", "content": session.system_prompt}]
 
         # Recall relevant memory and inject as a system block (recall timing & placement)
@@ -33,7 +33,7 @@ class ContextBuilder:
             msgs.append({"role": "system", "content": "\n".join(lines)})
 
         # Compress older history if over threshold.
-        # The newly-appended user message is at the tail, so compress everything
+        # The current user message is at the tail, so compress everything
         # except the most recent `recent_keep` entries (which keeps the live
         # user turn intact).
         history = list(session.messages)
@@ -47,7 +47,8 @@ class ContextBuilder:
             msgs.append({"role": "system", "content": f"Conversation so far (summary):\n{session.summary}"})
 
         msgs.extend(history)
-        # The last message is now the user input (appended to session.messages above).
+        # The last message is the user input (added to session.messages by the
+        # caller before the tool loop).
         return msgs, []  # tool schemas injected by runtime
 
     def _summarize(self, older: list[dict], prev_summary: str) -> str:

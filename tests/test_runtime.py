@@ -3,7 +3,7 @@ import pytest
 from agent.config import Settings
 from agent.session import Session, SessionStore
 from agent.llm import MockLLMClient
-from agent.runtime import run_turn, build_default_registry, build_memory
+from agent.runtime import run_turn, build_default_registry, build_memory, _should_extract
 from agent.trace import TraceLogger
 
 
@@ -70,3 +70,15 @@ def test_max_iters_forces_finalize(env):
         len([m for m in sess.messages if m.get("role") == "tool"])
         == settings.max_tool_iters
     )
+
+
+def test_should_extract_skips_trivial_turns():
+    # Trivial: below the 80-char combined threshold -> skip extraction.
+    assert _should_extract("hi", "hello") is False
+    assert _should_extract("what is 2+2?", "2 + 2 = 4") is False
+
+
+def test_should_extract_allows_substantive_turns():
+    user = "Remember that I love green tea in the morning and prefer it iced."
+    answer = "Got it, I've noted your preference for iced green tea in the morning."
+    assert _should_extract(user, answer) is True
