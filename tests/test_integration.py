@@ -3,11 +3,11 @@ import os
 import pytest
 from pathlib import Path
 
-from agent.config import Settings
-from agent.session import Session, SessionStore
-from agent.llm import LLMClient
-from agent.runtime import run_turn, build_default_registry, build_memory
-from agent.trace import TraceLogger
+from starry_code.config import Settings
+from starry_code.session import Session, SessionStore
+from starry_code.llm import LLMClient
+from starry_code.runtime import run_turn, build_default_registry, build_memory
+from starry_code.trace import TraceLogger
 
 
 @pytest.mark.skipif(not os.environ.get("LLM_API_KEY"), reason="LLM_API_KEY not set")

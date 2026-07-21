@@ -3,7 +3,7 @@ from typing import Iterable, TYPE_CHECKING
 from .base import Tool, ToolResult
 
 if TYPE_CHECKING:
-    from agent.session import Session
+    from starry_code.session import Session
 
 
 class ToolRegistry:

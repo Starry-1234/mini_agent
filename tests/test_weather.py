@@ -1,4 +1,4 @@
-from agent.tools.weather import WeatherTool
+from starry_code.tools.weather import WeatherTool
 w = WeatherTool()
 def test_known_city():
     r = w.execute({"city": "beijing"}, session=None)

@@ -17,7 +17,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application.
-COPY agent/ ./agent/
+COPY starry_code/ ./starry_code/
 COPY cli.py ./
 COPY demo/ ./demo/
 COPY README.md docs/ ./

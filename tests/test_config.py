@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from agent.config import Settings
+from starry_code.config import Settings
 
 def test_defaults(tmp_path, monkeypatch):
     for k in ["LLM_API_KEY", "EMBED_API_KEY", "REDIS_URL", "QDRANT_URL",

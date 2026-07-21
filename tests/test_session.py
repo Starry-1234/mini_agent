@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from agent.session import Session, SessionStore
+from starry_code.session import Session, SessionStore
 
 def test_session_roundtrip(tmp_path: Path):
     s = Session(id="abc", system_prompt="you are an agent")

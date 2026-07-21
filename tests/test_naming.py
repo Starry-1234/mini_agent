@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from agent.naming import generate_chinese_name, rename_session
-from agent.session import Session, SessionStore
-from agent.trace import TraceLogger
+from starry_code.naming import generate_chinese_name, rename_session
+from starry_code.session import Session, SessionStore
+from starry_code.trace import TraceLogger
 
 
 class _ScriptedLLM:
@@ -122,7 +122,7 @@ def test_rename_same_id_noop(tmp_path: Path):
 
 
 def test_autonamer_pending_flips_after_fire(tmp_path: Path, capsys):
-    from agent.naming import AutoNamer
+    from starry_code.naming import AutoNamer
     session, _store, trace = _make_session(tmp_path, "auto-pending")
     namer = AutoNamer()
     assert namer.pending() is True
@@ -138,7 +138,7 @@ def test_autonamer_pending_flips_after_fire(tmp_path: Path, capsys):
 
 
 def test_autonamer_raises_prints_fallback(tmp_path: Path, capsys):
-    from agent.naming import AutoNamer
+    from starry_code.naming import AutoNamer
     session, _store, trace = _make_session(tmp_path, "auto-raises")
     old_id = session.id
     namer = AutoNamer()
@@ -152,7 +152,7 @@ def test_autonamer_raises_prints_fallback(tmp_path: Path, capsys):
 
 
 def test_autonamer_success_renames_and_prints_id(tmp_path: Path, capsys):
-    from agent.naming import AutoNamer
+    from starry_code.naming import AutoNamer
     session, _store, trace = _make_session(tmp_path, "auto-success")
     namer = AutoNamer()
     namer.try_name(_ScriptedLLM("天气查询"), "北京今天天气怎么样",

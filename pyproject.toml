@@ -3,12 +3,12 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mini-agent"
+name = "starry-code"
 version = "0.1.0"
-description = "From-scratch minimal Agent runtime in Python with tool calling, multi-window session isolation, basic context compression, and a three-layer pluggable memory system."
+description = "Starry Code — from-scratch minimal Agent runtime in Python with tool calling, multi-window session isolation, basic context compression, and a three-layer pluggable memory system."
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "mini-agent contributors" }]
+authors = [{ name = "Starry Code contributors" }]
 license = { text = "MIT" }
 dependencies = [
     "openai>=1.30",
@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["agent"]
+packages = ["starry_code"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,10 +1,10 @@
 import pytest
 
-from agent.config import Settings
-from agent.session import Session, SessionStore
-from agent.llm import MockLLMClient
-from agent.runtime import run_turn, build_default_registry, build_memory, _should_extract
-from agent.trace import TraceLogger
+from starry_code.config import Settings
+from starry_code.session import Session, SessionStore
+from starry_code.llm import MockLLMClient
+from starry_code.runtime import run_turn, build_default_registry, build_memory, _should_extract
+from starry_code.trace import TraceLogger
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
-from agent.tools.todo import TodoTool
-from agent.session import Session
+from starry_code.tools.todo import TodoTool
+from starry_code.session import Session
 
 t = TodoTool()
 s = Session(id="x")

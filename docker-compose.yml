@@ -1,8 +1,8 @@
 services:
   agent:
     build: .
-    image: mini-agent:local
-    container_name: mini-agent
+    image: starry-code:local
+    container_name: starry-code
     env_file:
       - .env
     environment:
@@ -31,7 +31,7 @@ services:
     develop:
       watch:
         # Action: rebuild the image AND restart the running container.
-        - path: ./agent
+        - path: ./starry_code
           action: rebuild
           ignore:
             - __pycache__/
@@ -55,7 +55,7 @@ services:
   #   QDRANT_URL=http://qdrant:6333
   # qdrant:
   #   image: qdrant/qdrant:latest
-  #   container_name: mini-agent-qdrant
+  #   container_name: starry-code-qdrant
   #   ports:
   #     - "6333:6333"   # web UI / REST
   #   volumes:
@@ -67,7 +67,7 @@ services:
   #   REDIS_URL=redis://redis:6379/0
   # redis:
   #   image: redis:7-alpine
-  #   container_name: mini-agent-redis
+  #   container_name: starry-code-redis
   #   restart: unless-stopped
 
 # volumes:

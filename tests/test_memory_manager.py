@@ -1,8 +1,8 @@
-from agent.memory.embeddings import MockEmbedder
-from agent.memory.short_term import InMemoryShortTermStore
-from agent.memory.vector_store import LocalVectorStore
-from agent.memory.manager import MemoryManager
-from agent.llm import MockLLMClient
+from starry_code.memory.embeddings import MockEmbedder
+from starry_code.memory.short_term import InMemoryShortTermStore
+from starry_code.memory.vector_store import LocalVectorStore
+from starry_code.memory.manager import MemoryManager
+from starry_code.llm import MockLLMClient
 
 
 def test_recall_returns_top_k():

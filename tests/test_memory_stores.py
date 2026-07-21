@@ -1,7 +1,7 @@
 import math
-from agent.memory.embeddings import MockEmbedder
-from agent.memory.short_term import InMemoryShortTermStore
-from agent.memory.vector_store import LocalVectorStore
+from starry_code.memory.embeddings import MockEmbedder
+from starry_code.memory.short_term import InMemoryShortTermStore
+from starry_code.memory.vector_store import LocalVectorStore
 
 
 def test_short_term_recent_order():

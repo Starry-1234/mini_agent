@@ -1,4 +1,4 @@
-from agent.tools.search import SearchTool
+from starry_code.tools.search import SearchTool
 s = SearchTool()
 def test_returns_top_results():
     r = s.execute({"query": "python agent"}, session=None)

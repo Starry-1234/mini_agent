@@ -1,4 +1,4 @@
-from agent.parser import parse_response, ParsedResponse, _strip_thinking
+from starry_code.parser import parse_response, ParsedResponse, _strip_thinking
 
 def test_parses_tool_calls_and_thought():
     raw = {

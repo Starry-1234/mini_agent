@@ -1,4 +1,19 @@
-# Mini Agent
+# ✦ Starry Code
+
+```
+        +
+        |
+    ----+----
+       /|\
+      / | \
+     /  |  \
+----+---+----
+     \  |  /
+      \ | /
+       \|/
+        |
+        +
+```
 
 A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-use loop, three-layer pluggable memory, and basic context compression — built on top of any OpenAI-compatible chat API (DeepSeek / GLM / 豆包 / OpenAI) without LangGraph, OpenHands, or any agent framework.
 
@@ -8,7 +23,7 @@ A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-
 
 ---
 
-## 1. Run
+## 1. Starry Code CLI
 
 ### 1.1 Setup
 
@@ -76,7 +91,7 @@ Missing dependencies or empty keys automatically fall back to defaults — nothi
 
 ### 2.1 Runtime loop
 
-Per user turn, `agent.runtime.run_turn` runs the loop below (see `agent/runtime.py`):
+Per user turn, `starry_code.runtime.run_turn` runs the loop below (see `starry_code/runtime.py`):
 
 ```
 run_turn(session_id, user_input):
@@ -107,7 +122,7 @@ The **bounded `MAX_TOOL_ITERS`** (default 8) protects against pathological loops
 
 ### 2.2 Tool registry
 
-`agent/tools/registry.py` keeps a `dict[name, Tool]`. Each `Tool` carries `name`, `description`, `parameters` (JSON Schema dict), and `execute(args, session) -> ToolResult`. Built-in tools:
+`starry_code/tools/registry.py` keeps a `dict[name, Tool]`. Each `Tool` carries `name`, `description`, `parameters` (JSON Schema dict), and `execute(args, session) -> ToolResult`. Built-in tools:
 
 | Tool         | What it does                                                          |
 |--------------|-----------------------------------------------------------------------|
@@ -116,19 +131,19 @@ The **bounded `MAX_TOOL_ITERS`** (default 8) protects against pathological loops
 | `todo`       | Per-session todo list: `add` / `list` / `complete`, persists to JSON   |
 | `weather`    | Mock weather by city                                                  |
 
-`registry.openai_schemas()` produces the `tools=[…]` payload for OpenAI-style function calling. New tools register with one line in `agent/runtime.py:build_default_registry()`.
+`registry.openai_schemas()` produces the `tools=[…]` payload for OpenAI-style function calling. New tools register with one line in `starry_code/runtime.py:build_default_registry()`.
 
 ### 2.3 Session isolation
 
-Each `--session <id>` = one JSON file at `sessions/<id>.json` (see `agent/session.py`). Two windows with different ids never share state; re-entering the same id resumes the conversation. Writes are atomic (`tmp.replace`); reads tolerate missing files (return a fresh `Session`).
+Each `--session <id>` = one JSON file at `sessions/<id>.json` (see `starry_code/session.py`). Two windows with different ids never share state; re-entering the same id resumes the conversation. Writes are atomic (`tmp.replace`); reads tolerate missing files (return a fresh `Session`).
 
 ### 2.4 Context compression
 
-Implemented in `agent/context.py:ContextBuilder`. Trigger: when `len(session.messages) > CONTEXT_MAX_MESSAGES`, the builder asks the configured `summarizer` LLM to compress everything except the last `RECENT_KEEP` messages (default: keep last 8 verbatim) into a rolling summary, which is then injected as a `system` block above the verbatim history. **Important invariant:** every fact worth remembering has already been extracted into long-term memory by `memory.remember_sid` before compression can run, so compression is lossless with respect to durable knowledge.
+Implemented in `starry_code/context.py:ContextBuilder`. Trigger: when `len(session.messages) > CONTEXT_MAX_MESSAGES`, the builder asks the configured `summarizer` LLM to compress everything except the last `RECENT_KEEP` messages (default: keep last 8 verbatim) into a rolling summary, which is then injected as a `system` block above the verbatim history. **Important invariant:** every fact worth remembering has already been extracted into long-term memory by `memory.remember_sid` before compression can run, so compression is lossless with respect to durable knowledge.
 
 ### 2.5 Memory layers
 
-Three layers, all pluggable, with zero-infra defaults (see `agent/memory/`):
+Three layers, all pluggable, with zero-infra defaults (see `starry_code/memory/`):
 
 | Layer       | Stores                              | Default backend | Optional                |
 |-------------|-------------------------------------|-----------------|-------------------------|
@@ -136,9 +151,9 @@ Three layers, all pluggable, with zero-infra defaults (see `agent/memory/`):
 | Episodic    | rolling summaries of older dialogue | local JSONL + cosine | Qdrant / Chroma (`VECTOR_BACKEND=…`) |
 | Semantic    | distilled facts / user profile      | local JSONL + cosine | Qdrant / Chroma         |
 
-Write path (`agent/runtime.py:run_turn` → `agent/memory/manager.py:remember_sid` → `agent/memory/extractor.py:extract_facts`): at the end of each turn the LLM is asked (via `EXTRACTOR_PROMPT`) to extract 0-5 durable facts as a JSON array; each fact is upserted into the vector store with `meta={"sid": session_id, "kind": "fact"}`.
+Write path (`starry_code/runtime.py:run_turn` → `starry_code/memory/manager.py:remember_sid` → `starry_code/memory/extractor.py:extract_facts`): at the end of each turn the LLM is asked (via `EXTRACTOR_PROMPT`) to extract 0-5 durable facts as a JSON array; each fact is upserted into the vector store with `meta={"sid": session_id, "kind": "fact"}`.
 
-Read path (`agent/context.py:ContextBuilder.build` → `agent/memory/manager.py:MemoryManager.recall`): top-k semantic matches against the user's input, scoped by `sid`.
+Read path (`starry_code/context.py:ContextBuilder.build` → `starry_code/memory/manager.py:MemoryManager.recall`): top-k semantic matches against the user's input, scoped by `sid`.
 
 ---
 
@@ -156,7 +171,7 @@ run_turn(session, user_input):
       resp    = llm.chat(messages, tools=schemas)            ← LLM call comes AFTER
 ```
 
-The recall lives inside `ContextBuilder.build` (`agent/context.py`), which is invoked at the **start of every iteration** of the tool loop — so a tool-heavy turn still gets fresh recall before each LLM call. Recall is gated on the **user input** for that turn, not on intermediate tool results.
+The recall lives inside `ContextBuilder.build` (`starry_code/context.py`), which is invoked at the **start of every iteration** of the tool loop — so a tool-heavy turn still gets fresh recall before each LLM call. Recall is gated on the **user input** for that turn, not on intermediate tool results.
 
 ### 3.2 Where — single `system` block, immediately after the base system prompt, **before** any conversation history or summary
 
@@ -171,7 +186,7 @@ The order of messages sent to the LLM is, deterministically:
 ]
 ```
 
-In code (`agent/context.py:ContextBuilder.build`):
+In code (`starry_code/context.py:ContextBuilder.build`):
 
 ```python
 msgs.append({"role": "system", "content": session.system_prompt})   # 1 base system
@@ -184,7 +199,7 @@ if hits:
 
 ### 3.3 What — top-k results from the vector store, filtered by `sid`
 
-`MemoryManager.recall` (in `agent/memory/manager.py`) calls `vector_store.search(query, top_k)` and filters results by `meta["sid"] == session.id`. The default `top_k=5` is configurable via the constructor. The block is rendered as a single labelled `system` message so the model can distinguish it from the verbatim transcript.
+`MemoryManager.recall` (in `starry_code/memory/manager.py`) calls `vector_store.search(query, top_k)` and filters results by `meta["sid"] == session.id`. The default `top_k=5` is configurable via the constructor. The block is rendered as a single labelled `system` message so the model can distinguish it from the verbatim transcript.
 
 ### 3.4 Why this placement
 
@@ -230,9 +245,9 @@ The suite covers:
 ## 5. Project layout
 
 ```
-mini_agent/
+starry_code/
 ├── cli.py                         # CLI entrypoint: --session / --once / --mock
-├── agent/
+├── starry_code/
 │   ├── __init__.py
 │   ├── config.py                  # env-driven Settings dataclass
 │   ├── trace.py                   # colored terminal + JSONL TraceLogger
@@ -255,7 +270,7 @@ mini_agent/
 │       ├── vector_store.py        # LocalVectorStore + QdrantVectorStore + ChromaVectorStore
 │       ├── extractor.py           # extract_facts(llm, recent_turns)
 │       └── manager.py             # MemoryManager: write-path distillation + read-path recall
-├── tests/                         # mirrors agent/ structure; *.py unit tests
+├── tests/                         # mirrors starry_code/ structure; *.py unit tests
 ├── demo/
 │   └── demo_weather_todo.py       # end-to-end "weather + todo" scenario
 ├── docs/

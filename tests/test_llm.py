@@ -1,5 +1,5 @@
 import pytest
-from agent.llm import LLMClient, MockLLMClient
+from starry_code.llm import LLMClient, MockLLMClient
 
 def test_mock_chat_returns_first_scripted():
     m = MockLLMClient(chat_responses=[

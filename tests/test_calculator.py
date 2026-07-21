@@ -1,6 +1,6 @@
 import pytest
-from agent.tools.calculator import CalculatorTool
-from agent.tools.base import ToolResult
+from starry_code.tools.calculator import CalculatorTool
+from starry_code.tools.base import ToolResult
 
 calc = CalculatorTool()
 

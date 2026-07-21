@@ -1,6 +1,6 @@
 import pytest
-from agent.tools.base import Tool, ToolResult
-from agent.tools.registry import ToolRegistry
+from starry_code.tools.base import Tool, ToolResult
+from starry_code.tools.registry import ToolRegistry
 
 def echo_execute(args, session):
     return ToolResult(ok=True, content=f"got {args['x']}")

@@ -4,8 +4,8 @@ import json
 import re
 from typing import Iterable
 
-from agent.llm import LLMClient
-from agent.prompts import EXTRACTOR_PROMPT
+from starry_code.llm import LLMClient
+from starry_code.prompts import EXTRACTOR_PROMPT
 
 
 def _format_turns(turns: Iterable[dict]) -> str:

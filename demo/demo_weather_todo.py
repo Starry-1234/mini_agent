@@ -9,11 +9,11 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from agent.config import Settings
-from agent.session import Session
-from agent.llm import LLMClient, MockLLMClient
-from agent.runtime import run_turn, build_default_registry, build_memory
-from agent.trace import TraceLogger
+from starry_code.config import Settings
+from starry_code.session import Session
+from starry_code.llm import LLMClient, MockLLMClient
+from starry_code.runtime import run_turn, build_default_registry, build_memory
+from starry_code.trace import TraceLogger
 
 
 def main() -> int:

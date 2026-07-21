@@ -1,10 +1,10 @@
-from agent.context import ContextBuilder
-from agent.session import Session
-from agent.config import Settings
-from agent.memory.embeddings import MockEmbedder
-from agent.memory.short_term import InMemoryShortTermStore
-from agent.memory.vector_store import LocalVectorStore
-from agent.memory.manager import MemoryManager
+from starry_code.context import ContextBuilder
+from starry_code.session import Session
+from starry_code.config import Settings
+from starry_code.memory.embeddings import MockEmbedder
+from starry_code.memory.short_term import InMemoryShortTermStore
+from starry_code.memory.vector_store import LocalVectorStore
+from starry_code.memory.manager import MemoryManager
 
 def make_cb(tmp_path):
     s = Settings(sessions_dir=tmp_path, context_max_messages=6, recent_keep=2)
@@ -46,7 +46,7 @@ def test_context_triggers_summary_when_long(tmp_path):
     # build with a mock llm; we will pass a stub via the manager
     cb.memory.llm = None  # extractor is irrelevant; summary uses settings-provided LLM via env? Not in builder.
     # Force summary path by setting a no-op LLM via the builder attribute
-    from agent.llm import MockLLMClient
+    from starry_code.llm import MockLLMClient
     cb.summarizer = MockLLMClient(chat_responses=[
         {"choices": [{"message": {"role": "assistant", "content": "summary text"}}]}
     ])

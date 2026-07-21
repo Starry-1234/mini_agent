@@ -1,5 +1,5 @@
 import json
-from agent.trace import TraceLogger
+from starry_code.trace import TraceLogger
 
 
 def test_trace_appends_jsonl_and_terminal(tmp_path, capsys):

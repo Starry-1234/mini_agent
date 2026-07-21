@@ -14,12 +14,12 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass  # Python < 3.7 or already closed
 
-from agent.config import Settings
-from agent.session import SessionStore
-from agent.llm import LLMClient, MockLLMClient, make_default_mock_llm
-from agent.runtime import run_turn, build_default_registry, build_memory
-from agent.trace import TraceLogger
-from agent.naming import AutoNamer
+from starry_code.config import Settings
+from starry_code.session import SessionStore
+from starry_code.llm import LLMClient, MockLLMClient, make_default_mock_llm
+from starry_code.runtime import run_turn, build_default_registry, build_memory
+from starry_code.trace import TraceLogger
+from starry_code.naming import AutoNamer
 
 
 def _gen_auto_id() -> str:
@@ -43,7 +43,7 @@ def _set_terminal_title(title: str) -> None:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Mini Agent CLI")
+    p = argparse.ArgumentParser(description="Starry Code CLI")
     p.add_argument("--session", "-s", nargs="?", default=None,
                    help="Session id (window name). If omitted, an auto id is "
                         "generated and the session is auto-named in Chinese "
@@ -83,7 +83,7 @@ def main() -> int:
     # Update the terminal window title so the user can tell multiple REPL
     # windows apart at a glance. Reflects the current session id; will be
     # refreshed again after auto-naming fires.
-    _set_terminal_title(f"{session.id} — mini_agent")
+    _set_terminal_title(f"✦ Starry Code · {session.id}")
 
     def ask(text: str) -> str:
         answer = run_turn(session, text, settings=settings, llm=llm,
@@ -92,14 +92,14 @@ def main() -> int:
         if autonamer is not None and autonamer.pending():
             autonamer.try_name(llm, text, session, trace, settings.sessions_dir)
             # The session id may have changed; refresh the title.
-            _set_terminal_title(f"{session.id} — mini_agent")
+            _set_terminal_title(f"✦ Starry Code · {session.id}")
         return answer
 
     if args.once:
         print(ask(args.once))
         return 0
 
-    print(f"mini_agent — session={session.id} (type 'exit' to quit)")
+    print(f"✦ Starry Code — session={session.id} (type 'exit' to quit)")
     while True:
         try:
             text = input("> ")

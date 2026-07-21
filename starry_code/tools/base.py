@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Callable, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent.session import Session
+    from starry_code.session import Session
 
 
 class ToolResult:
