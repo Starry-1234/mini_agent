@@ -30,6 +30,9 @@ services:
         # Action: rebuild the image AND restart the running container.
         - path: ./agent
           action: rebuild
+          ignore:
+            - __pycache__/
+            - "**/*.pyc"
         - path: ./cli.py
           action: rebuild
         - path: ./requirements.txt
@@ -39,15 +42,10 @@ services:
         # Sync (no rebuild needed for pure data/config):
         - path: ./demo
           action: sync
+          target: /app/demo
         - path: ./.env.example
           action: sync
-      ignore:
-        - sessions/
-        - .git/
-        - .venv/
-        - __pycache__/
-        - .superpowers/
-        - "**/*.pyc"
+          target: /.env.example
 
   # Optional bundled vector store. Uncomment to use, then update .env:
   #   VECTOR_BACKEND=qdrant
