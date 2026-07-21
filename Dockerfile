@@ -29,5 +29,11 @@ ENV SESSIONS_DIR=/app/sessions
 USER agent
 
 # tini = clean PID 1 signal handling; crucial for Ctrl-C in `docker run -it`.
+# CMD is empty so `docker compose run --rm agent` invokes `python cli.py` with
+# no args, which lets the auto-naming flow pick a Chinese slug after the
+# first turn (otherwise CMD would default to --help and the container would
+# print usage and exit immediately). Override per-invocation:
+#   docker compose run --rm agent --session weather
+#   docker compose run --rm agent --once "what is 2+2?"
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "cli.py"]
-CMD ["--help"]
+CMD []
