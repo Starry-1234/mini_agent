@@ -28,6 +28,20 @@ def _gen_auto_id() -> str:
     return f"auto-{ts}-{secrets.token_hex(2)}"
 
 
+def _set_terminal_title(title: str) -> None:
+    """Set the terminal window title via the ANSI OSC 0 escape sequence.
+
+    Supported by Windows Terminal, iTerm2, gnome-terminal, kitty, and
+    modern PowerShell/cmd on Windows 10+. No-op on streams that can't be
+    written to (e.g. captured/redirected stdio).
+    """
+    try:
+        sys.stdout.write(f"\033]0;{title}\007")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Mini Agent CLI")
     p.add_argument("--session", "-s", nargs="?", default=None,
@@ -66,12 +80,19 @@ def main() -> int:
 
     autonamer = AutoNamer() if auto_named else None
 
+    # Update the terminal window title so the user can tell multiple REPL
+    # windows apart at a glance. Reflects the current session id; will be
+    # refreshed again after auto-naming fires.
+    _set_terminal_title(f"{session.id} — mini_agent")
+
     def ask(text: str) -> str:
         answer = run_turn(session, text, settings=settings, llm=llm,
                           registry=registry, memory=memory, trace=trace)
         store.save(session)
         if autonamer is not None and autonamer.pending():
             autonamer.try_name(llm, text, session, trace, settings.sessions_dir)
+            # The session id may have changed; refresh the title.
+            _set_terminal_title(f"{session.id} — mini_agent")
         return answer
 
     if args.once:
