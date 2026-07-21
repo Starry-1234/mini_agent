@@ -1,0 +1,31 @@
+# Git / VCS
+.git/
+.gitignore
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python caches / virtualenvs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime / secrets / local data — never bake into the image
+.env
+.env.*
+sessions/
+*.log
+.superpowers/
+
+# Docs build / dist
+build/
+dist/
+docs/_build/

@@ -1,6 +1,7 @@
 openai>=1.30
+python-dotenv>=1.0
 pytest>=8.0
-# optional backends
+# backends
 redis>=5.0
 qdrant-client>=1.7
 chromadb>=0.4

@@ -1,0 +1,44 @@
+services:
+  agent:
+    build: .
+    image: mini-agent:local
+    container_name: mini-agent
+    env_file:
+      - .env
+    environment:
+      # Inside compose, prefer compose-network hostnames (e.g. qdrant) over
+      # whatever public URLs the .env file holds. Override as needed.
+      SESSIONS_DIR: /app/sessions
+      # When using the bundled qdrant service below, set:
+      # VECTOR_BACKEND: qdrant
+      # QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./sessions:/app/sessions
+    stdin_open: true   # for `docker compose run ... -it`
+    tty: true
+    restart: unless-stopped
+    # Default command: REPL on a single named session. Override per-invocation.
+    command: ["--session", "prod"]
+
+  # Optional bundled vector store. Uncomment to use, then update .env:
+  #   VECTOR_BACKEND=qdrant
+  #   QDRANT_URL=http://qdrant:6333
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: mini-agent-qdrant
+  #   ports:
+  #     - "6333:6333"   # web UI / REST
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   restart: unless-stopped
+
+  # Optional bundled short-term store. Uncomment to use, then update .env:
+  #   SHORT_TERM_BACKEND=redis
+  #   REDIS_URL=redis://redis:6379/0
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: mini-agent-redis
+  #   restart: unless-stopped
+
+# volumes:
+#   qdrant_data:
