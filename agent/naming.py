@@ -125,3 +125,47 @@ def _resolve_free_id(sessions_dir: Path, new_id: str) -> str | None:
         if not taken(candidate):
             return candidate
     return None
+
+
+class AutoNamer:
+    """Encapsulates the 'auto-name this session after the first turn' state.
+
+    - `pending()` returns True exactly once: before the first successful
+      `try_name()` call.
+    - `try_name(llm, first_user_msg, session, trace, sessions_dir)` does the
+      LLM call + rename + prints a friendly one-line message on stdout.
+    - Never blocks: failures return silently except for the one-line console
+      print. Safe to call repeatedly — subsequent calls are no-ops once the
+      auto-name has fired.
+    """
+
+    def __init__(self) -> None:
+        self._fired = False
+
+    def pending(self) -> bool:
+        return not self._fired
+
+    def try_name(
+        self,
+        llm,
+        first_user_msg: str,
+        session: "Session",
+        trace: TraceLogger,
+        sessions_dir: Path,
+    ) -> None:
+        if self._fired:
+            return
+        self._fired = True
+        old_id = session.id
+        name = generate_chinese_name(llm, first_user_msg)
+        if name is None:
+            print(f"[could not auto-name, use --session {old_id} to continue]")
+            return
+        ok = rename_session(session, name, trace, sessions_dir)
+        if not ok:
+            print(f"[could not auto-name, use --session {old_id} to continue]")
+            return
+        print(
+            f"[session auto-named to: {session.id} "
+            f"— use --session {session.id} to continue next time]"
+        )

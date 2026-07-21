@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import math
+import re
 from typing import Any
 
 
@@ -32,6 +33,86 @@ class MockLLMClient:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [_hash_vec(t, self._dim) for t in texts]
+
+
+# Heuristic: extract the arithmetic expression the user asked about.
+# Match patterns like "2+2", "what is 3 * 4", "compute 10 / 2", etc.
+_MATH_QUERY_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?\s*[+\-*/%][\s0-9.+\-*/%()]+)")
+
+
+class _ScriptedMockLLM(MockLLMClient):
+    """Internal: wraps MockLLMClient with naming-prompt routing.
+
+    Routes messages that contain "会话命名助手" (the auto-naming system
+    prompt marker) to a fixed Chinese slug so `--mock` exercises the
+    rename flow without exhausting the scripted queue.
+    """
+
+    _NAMING_RESPONSE = {"choices": [{"message": {"role": "assistant", "content": "测试会话"}}]}
+
+    def __init__(self, responses: list[dict], embed_dim: int = 16) -> None:
+        super().__init__(chat_responses=responses, embed_dim=embed_dim)
+
+    def chat(self, messages, tools=None) -> dict:  # type: ignore[override]
+        for m in messages:
+            content = m.get("content") or ""
+            if isinstance(content, str) and "会话命名助手" in content:
+                return self._NAMING_RESPONSE
+        return super().chat(messages, tools=tools)
+
+
+def make_default_mock_llm(user_message: str, embed_dim: int = 16) -> MockLLMClient:
+    """Pre-scripted MockLLMClient for common CLI smoke queries.
+
+    Used only by `cli.py --mock` for offline testing — not for real LLM work.
+    The demo script keeps its own scripted flow and is unaffected.
+
+    - Math/arithmetic queries (contains a number and an operator + - * /):
+        step 1 -> tool_call to `calculator` with the extracted expression
+        step 2 -> final answer "The answer is <result>." (placeholder; the real
+                  answer is whatever the calculator tool returns).
+        step 3 -> extractor no-facts response.
+    - Otherwise: a single direct final answer "(mock) I received your message."
+      plus an extractor no-facts response.
+
+    Auto-naming prompts are intercepted and return "测试会话" so `--mock`
+    exercises the rename flow without exhausting the queue.
+    """
+    no_facts = {"choices": [{"message": {"role": "assistant", "content": "[]"}}]}
+    expr = _extract_expression(user_message)
+    if expr is not None:
+        responses = [
+            {"choices": [{"message": {
+                "role": "assistant",
+                "content": "computing",
+                "tool_calls": [{"id": "mock_calc", "type": "function",
+                                "function": {"name": "calculator",
+                                             "arguments": '{"expression": "' + expr + '"}'}}],
+            }}]},
+            {"choices": [{"message": {
+                "role": "assistant",
+                "content": "The answer is <result>.",
+            }}]},
+            no_facts,
+        ]
+    else:
+        responses = [
+            {"choices": [{"message": {
+                "role": "assistant",
+                "content": "(mock) I received your message.",
+            }}]},
+            no_facts,
+        ]
+    return _ScriptedMockLLM(responses, embed_dim=embed_dim)
+
+
+def _extract_expression(user_message: str) -> str | None:
+    m = _MATH_QUERY_RE.search(user_message)
+    if not m:
+        return None
+    expr = m.group(1).strip()
+    # Strip trailing junk that is unlikely to be part of the expression.
+    return expr.rstrip(".,;:?")
 
 
 class LLMClient:

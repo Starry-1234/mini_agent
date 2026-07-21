@@ -114,3 +114,51 @@ def test_rename_same_id_noop(tmp_path: Path):
     assert ok is True
     assert session.id == "keep"
     trace.close()
+
+
+# ---------------------------------------------------------------------------
+# AutoNamer
+# ---------------------------------------------------------------------------
+
+
+def test_autonamer_pending_flips_after_fire(tmp_path: Path, capsys):
+    from agent.naming import AutoNamer
+    session, _store, trace = _make_session(tmp_path, "auto-pending")
+    namer = AutoNamer()
+    assert namer.pending() is True
+    namer.try_name(_ScriptedLLM("天气查询"), "北京今天天气怎么样",
+                   session, trace, tmp_path)
+    capsys.readouterr()  # swallow the success print
+    assert namer.pending() is False
+    # Second call is a no-op (does not raise).
+    namer.try_name(_ScriptedLLM(raises=True), "msg", session, trace, tmp_path)
+    out = capsys.readouterr().out
+    assert out == ""  # no extra print
+    trace.close()
+
+
+def test_autonamer_raises_prints_fallback(tmp_path: Path, capsys):
+    from agent.naming import AutoNamer
+    session, _store, trace = _make_session(tmp_path, "auto-raises")
+    old_id = session.id
+    namer = AutoNamer()
+    namer.try_name(_ScriptedLLM(raises=True), "msg",
+                   session, trace, tmp_path)
+    out = capsys.readouterr().out
+    assert "[could not auto-name" in out
+    assert old_id in out
+    assert session.id == old_id  # unchanged
+    trace.close()
+
+
+def test_autonamer_success_renames_and_prints_id(tmp_path: Path, capsys):
+    from agent.naming import AutoNamer
+    session, _store, trace = _make_session(tmp_path, "auto-success")
+    namer = AutoNamer()
+    namer.try_name(_ScriptedLLM("天气查询"), "北京今天天气怎么样",
+                   session, trace, tmp_path)
+    out = capsys.readouterr().out
+    assert "[session auto-named to: 天气查询" in out
+    assert session.id == "天气查询"
+    assert (tmp_path / "天气查询.json").exists()
+    trace.close()

@@ -20,6 +20,35 @@ services:
     # Default command: REPL on a single named session. Override per-invocation.
     command: ["--session", "prod"]
 
+    # To enable hot-reload during development, run `docker compose watch`
+    # in another terminal. It will rebuild the image + restart the
+    # container automatically when files under ./agent, ./cli.py, or
+    # ./requirements.txt change. Use plain `docker compose run` for
+    # one-shot / non-watch workflows.
+    develop:
+      watch:
+        # Action: rebuild the image AND restart the running container.
+        - path: ./agent
+          action: rebuild
+        - path: ./cli.py
+          action: rebuild
+        - path: ./requirements.txt
+          action: rebuild
+        - path: ./Dockerfile
+          action: rebuild
+        # Sync (no rebuild needed for pure data/config):
+        - path: ./demo
+          action: sync
+        - path: ./.env.example
+          action: sync
+      ignore:
+        - sessions/
+        - .git/
+        - .venv/
+        - __pycache__/
+        - .superpowers/
+        - "**/*.pyc"
+
   # Optional bundled vector store. Uncomment to use, then update .env:
   #   VECTOR_BACKEND=qdrant
   #   QDRANT_URL=http://qdrant:6333
