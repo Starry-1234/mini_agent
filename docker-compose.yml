@@ -17,8 +17,11 @@ services:
     stdin_open: true   # for `docker compose run ... -it`
     tty: true
     restart: unless-stopped
-    # Default command: REPL on a single named session. Override per-invocation.
-    command: ["--session", "prod"]
+    # No default command — let cli.py run with no --session so it auto-names
+    # the session to a Chinese slug after the first turn (window title updates
+    # to match). Override per-invocation to pin a session name:
+    #   docker compose run --rm agent --session weather
+    #   docker compose run --rm agent --once "what is 2+2?"
 
     # To enable hot-reload during development, run `docker compose watch`
     # in another terminal. It will rebuild the image + restart the
