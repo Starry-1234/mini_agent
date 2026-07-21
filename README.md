@@ -1,0 +1,279 @@
+# Mini Agent
+
+A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-use loop, three-layer pluggable memory, and basic context compression — built on top of any OpenAI-compatible chat API (DeepSeek / GLM / 豆包 / OpenAI) without LangGraph, OpenHands, or any agent framework.
+
+> Spec: [`docs/superpowers/specs/2026-07-21-mini-agent-design.md`](docs/superpowers/specs/2026-07-21-mini-agent-design.md)
+> Architecture Q&A: [`docs/ARCHITECTURE_QA.md`](docs/ARCHITECTURE_QA.md)
+> Prompt log: [`docs/PROMPTS_LOG.md`](docs/PROMPTS_LOG.md)
+
+---
+
+## 1. Run
+
+### 1.1 Setup
+
+```bash
+# 1) Create and activate a virtualenv
+python -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows (PowerShell)
+# .venv\Scripts\Activate.ps1
+
+# 2) Install dependencies (only `openai` is required; redis/qdrant/chroma are optional)
+pip install -r requirements.txt
+
+# 3) Configure environment
+cp .env.example .env
+# then edit .env and set LLM_API_KEY (and optionally EMBED_* for vector search)
+```
+
+`.env.example` defaults point at DeepSeek; switch `LLM_BASE_URL` / `LLM_MODEL` to use GLM, 豆包, OpenAI, or any other OpenAI-compatible endpoint.
+
+### 1.2 Basic commands
+
+```bash
+# Interactive session (recommended for chatting)
+python cli.py --session w1
+
+# A second terminal opens a different window — completely isolated state
+python cli.py --session w2
+
+# One-shot: send a single prompt and exit
+python cli.py --session w1 --once "What is 2*(3+4)?"
+
+# Offline / no-API smoke (uses a deterministic MockLLMClient)
+python cli.py --session demo --mock --once "ping"
+```
+
+### 1.3 End-to-end demo
+
+```bash
+python demo/demo_weather_todo.py            # real API (needs LLM_API_KEY)
+python demo/demo_weather_todo.py --mock     # offline smoke (recommended for CI / recording)
+```
+
+### 1.4 Pluggable backends
+
+Defaults require **zero infrastructure** (in-memory + JSONL files). Switch to real backends by setting `.env`:
+
+| Env var             | Default  | Options             | Notes                                          |
+|---------------------|----------|---------------------|------------------------------------------------|
+| `LLM_BASE_URL`      | DeepSeek | any OpenAI-compat   | `LLM_MODEL` selects the model                  |
+| `LLM_API_KEY`       | (none)   | your key            | required unless `--mock`                       |
+| `EMBED_*`           | unset    | OpenAI-compat URL   | unset → keyword/BM25 fallback in vector store  |
+| `SHORT_TERM_BACKEND`| `memory` | `memory` / `redis`  | `redis` requires `pip install redis` + `REDIS_URL` |
+| `VECTOR_BACKEND`    | `local`  | `local` / `qdrant` / `chroma` | `qdrant`/`chroma` require their clients installed |
+| `MAX_TOOL_ITERS`    | `8`      | int                 | iteration cap to break tool loops              |
+| `CONTEXT_MAX_MESSAGES` | `20`  | int                 | compression trigger threshold                  |
+| `RECENT_KEEP`       | `8`      | int                 | messages kept verbatim after compression       |
+
+Missing dependencies or empty keys automatically fall back to defaults — nothing crashes for a casual user.
+
+---
+
+## 2. System design
+
+### 2.1 Runtime loop
+
+Per user turn, `agent.runtime.run_turn` runs the loop below (see `agent/runtime.py`):
+
+```
+run_turn(session_id, user_input):
+  memory.push_turn(session_id, {role:user})     # 1) record to short-term
+  while iters < MAX_TOOL_ITERS:
+    messages = ContextBuilder.build(session, user_input)
+        ├── system prompt
+        ├── (NEW) recalled memory block    ← recall timing & placement
+        ├── (optional) conversation summary
+        └── recent messages
+    resp    = llm.chat(messages, tools=schemas)
+    parsed  = parse_response(resp)              # {thought, tool_calls, final}
+    if parsed.tool_calls:
+        for call in parsed.tool_calls:
+            result = registry.execute(call.name, call.args, session)
+            session.add_tool_result(call.id, result)
+            memory.push_turn(session.id, {role:tool})
+        iters += 1; continue
+    else:
+        session.add_assistant(parsed.final)
+        memory.remember_sid(session.id, recent_turns, llm=llm)   # distill facts
+        SessionStore.save(session)
+        return parsed.final
+  return "(stopped: maximum tool iterations reached)"   # safety
+```
+
+The **bounded `MAX_TOOL_ITERS`** (default 8) protects against pathological loops. If the model never emits a `final_answer`, the runtime force-finalises and returns a guard message.
+
+### 2.2 Tool registry
+
+`agent/tools/registry.py` keeps a `dict[name, Tool]`. Each `Tool` carries `name`, `description`, `parameters` (JSON Schema dict), and `execute(args, session) -> ToolResult`. Built-in tools:
+
+| Tool         | What it does                                                          |
+|--------------|-----------------------------------------------------------------------|
+| `calculator` | AST-whitelisted arithmetic (no `eval`)                                |
+| `search`     | Mock keyword search returning canned results                          |
+| `todo`       | Per-session todo list: `add` / `list` / `complete`, persists to JSON   |
+| `weather`    | Mock weather by city                                                  |
+
+`registry.openai_schemas()` produces the `tools=[…]` payload for OpenAI-style function calling. New tools register with one line in `agent/runtime.py:build_default_registry()`.
+
+### 2.3 Session isolation
+
+Each `--session <id>` = one JSON file at `sessions/<id>.json` (see `agent/session.py`). Two windows with different ids never share state; re-entering the same id resumes the conversation. Writes are atomic (`tmp.replace`); reads tolerate missing files (return a fresh `Session`).
+
+### 2.4 Context compression
+
+Implemented in `agent/context.py:ContextBuilder`. Trigger: when `len(session.messages) > CONTEXT_MAX_MESSAGES`, the builder asks the configured `summarizer` LLM to compress everything except the last `RECENT_KEEP` messages (default: keep last 8 verbatim) into a rolling summary, which is then injected as a `system` block above the verbatim history. **Important invariant:** every fact worth remembering has already been extracted into long-term memory by `memory.remember_sid` before compression can run, so compression is lossless with respect to durable knowledge.
+
+### 2.5 Memory layers
+
+Three layers, all pluggable, with zero-infra defaults (see `agent/memory/`):
+
+| Layer       | Stores                              | Default backend | Optional                |
+|-------------|-------------------------------------|-----------------|-------------------------|
+| Short-term  | last K turns of raw conversation    | in-memory deque | Redis (`SHORT_TERM_BACKEND=redis`) |
+| Episodic    | rolling summaries of older dialogue | local JSONL + cosine | Qdrant / Chroma (`VECTOR_BACKEND=…`) |
+| Semantic    | distilled facts / user profile      | local JSONL + cosine | Qdrant / Chroma         |
+
+Write path (`agent/runtime.py:run_turn` → `agent/memory/manager.py:remember_sid` → `agent/memory/extractor.py:extract_facts`): at the end of each turn the LLM is asked (via `EXTRACTOR_PROMPT`) to extract 0-5 durable facts as a JSON array; each fact is upserted into the vector store with `meta={"sid": session_id, "kind": "fact"}`.
+
+Read path (`agent/context.py:ContextBuilder.build` → `agent/memory/manager.py:MemoryManager.recall`): top-k semantic matches against the user's input, scoped by `sid`.
+
+---
+
+## 3. Memory recall — timing and placement
+
+This is the spec's hard requirement. **The placement is not an implementation detail; it shapes the entire prompt structure.**
+
+### 3.1 When — every user turn, **before the LLM call**, **after loading the session**
+
+```
+run_turn(session, user_input):
+  ...
+  while iters < MAX_TOOL_ITERS:
+      messages = ContextBuilder.build(session, user_input)   ← recall happens HERE
+      resp    = llm.chat(messages, tools=schemas)            ← LLM call comes AFTER
+```
+
+The recall lives inside `ContextBuilder.build` (`agent/context.py`), which is invoked at the **start of every iteration** of the tool loop — so a tool-heavy turn still gets fresh recall before each LLM call. Recall is gated on the **user input** for that turn, not on intermediate tool results.
+
+### 3.2 Where — single `system` block, immediately after the base system prompt, **before** any conversation history or summary
+
+The order of messages sent to the LLM is, deterministically:
+
+```
+[
+  {"role": "system", "content": <base system prompt>},                    ← 1
+  {"role": "system", "content": "Relevant memory recalled for this turn:\n- ..."},  ← 2 (NEW)
+  {"role": "system", "content": "Conversation so far (summary):\n..."},   ← 3 (only if compressed)
+  {"role": "user" | "assistant" | "tool", ...},                            ← 4 verbatim history
+]
+```
+
+In code (`agent/context.py:ContextBuilder.build`):
+
+```python
+msgs.append({"role": "system", "content": session.system_prompt})   # 1 base system
+hits = self.memory.recall(session.id, user_input, top_k=5)          # 2 recall
+if hits:
+    msgs.append({"role": "system", "content": "Relevant memory recalled ...\n" + ...})
+# 3 rolling summary block (only when compressed)
+# 4 session.messages (verbatim history, user input last)
+```
+
+### 3.3 What — top-k results from the vector store, filtered by `sid`
+
+`MemoryManager.recall` (in `agent/memory/manager.py`) calls `vector_store.search(query, top_k)` and filters results by `meta["sid"] == session.id`. The default `top_k=5` is configurable via the constructor. The block is rendered as a single labelled `system` message so the model can distinguish it from the verbatim transcript.
+
+### 3.4 Why this placement
+
+- **Orthogonality to verbatim history.** Memory facts and verbatim dialogue are semantically different objects. Bundling them in the same block would force the model to guess which lines are "facts" and which are "what the user just said", inviting mode confusion.
+- **Compresses with history, not with the prompt.** When context compression collapses older turns, the recall block sits above the summary block, so the model still sees durable knowledge even after verbatim history is gone.
+- **Cheap to inject, cheap to update.** The block is rebuilt on every turn from the latest vector-store query — no cache invalidation across runs.
+- **Model sees it as a single labelled section.** The `system` role signals "background context the model should respect"; labelling it `Relevant memory recalled for this turn:` makes it auditable in the trace.
+
+---
+
+## 4. Tests
+
+```bash
+# Run the full suite (verbose)
+python -m pytest -v
+```
+
+The suite covers:
+
+| File                              | What it exercises                                         |
+|-----------------------------------|-----------------------------------------------------------|
+| `tests/test_config.py`            | `Settings.from_env` defaults & env overrides              |
+| `tests/test_trace.py`             | `TraceLogger` JSONL append + coloured terminal output     |
+| `tests/test_registry.py`          | `ToolRegistry` register/lookup/error paths                |
+| `tests/test_calculator.py`        | AST sandbox + safe-eval boundaries                        |
+| `tests/test_search.py`            | `SearchTool` mock data                                    |
+| `tests/test_weather.py`           | `WeatherTool` mock data                                   |
+| `tests/test_todo.py`              | `TodoTool` add/list/complete                              |
+| `tests/test_session.py`           | `SessionStore` load/save round-trip + isolation           |
+| `tests/test_parser.py`            | `parse_response` happy path + text-fallback               |
+| `tests/test_llm.py`               | `LLMClient` lazy SDK init + chat dump                     |
+| `tests/test_memory_stores.py`     | `LocalVectorStore` upsert/search; keyword fallback        |
+| `tests/test_memory_manager.py`    | `MemoryManager` recall-by-sid, extractor                  |
+| `tests/test_context.py`           | `ContextBuilder` compression trigger + recall placement   |
+| `tests/test_runtime.py`           | `run_turn` loop decisions (mock LLM)                      |
+| `tests/test_cli.py`               | CLI `--mock --once` end-to-end                            |
+| `tests/test_integration.py`       | Real LLM round-trip — **skipped unless `LLM_API_KEY` is set** |
+
+`tests/test_integration.py` is the only env-gated test; everything else runs offline.
+
+---
+
+## 5. Project layout
+
+```
+mini_agent/
+├── cli.py                         # CLI entrypoint: --session / --once / --mock
+├── agent/
+│   ├── __init__.py
+│   ├── config.py                  # env-driven Settings dataclass
+│   ├── trace.py                   # colored terminal + JSONL TraceLogger
+│   ├── llm.py                     # OpenAI-compatible client + MockLLMClient
+│   ├── parser.py                  # parse_response → {thought, tool_calls, final}
+│   ├── prompts.py                 # SYSTEM_PROMPT + EXTRACTOR_PROMPT
+│   ├── session.py                 # Session dataclass + SessionStore (JSON)
+│   ├── context.py                 # ContextBuilder: system + recall + summary + history
+│   ├── runtime.py                 # run_turn tool-using loop + build_default_*
+│   ├── tools/
+│   │   ├── base.py                # Tool + ToolResult
+│   │   ├── registry.py            # ToolRegistry
+│   │   ├── calculator.py          # AST-sandboxed arithmetic
+│   │   ├── search.py              # mock web search
+│   │   ├── weather.py             # mock weather by city
+│   │   └── todo.py                # per-session todo list
+│   └── memory/
+│       ├── embeddings.py          # MockEmbedder + OpenAICompatEmbedder
+│       ├── short_term.py          # InMemoryShortTermStore + RedisShortTermStore
+│       ├── vector_store.py        # LocalVectorStore + QdrantVectorStore + ChromaVectorStore
+│       ├── extractor.py           # extract_facts(llm, recent_turns)
+│       └── manager.py             # MemoryManager: write-path distillation + read-path recall
+├── tests/                         # mirrors agent/ structure; *.py unit tests
+├── demo/
+│   └── demo_weather_todo.py       # end-to-end "weather + todo" scenario
+├── docs/
+│   ├── ARCHITECTURE_QA.md         # answers to the 5 architecture design modules
+│   ├── PROMPTS_LOG.md             # chronological log of decisions & prompts
+│   └── superpowers/
+│       ├── plans/                 # implementation plan (untracked)
+│       └── specs/
+│           └── 2026-07-21-mini-agent-design.md
+├── sessions/                      # runtime: <sid>.json + <sid>.trace.jsonl
+├── .env.example
+├── requirements.txt
+├── pyproject.toml
+└── README.md                      # this file
+```
+
+---
+
+## 6. License
+
+See `LICENSE`.
