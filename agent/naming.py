@@ -13,6 +13,14 @@ from .trace import TraceLogger
 _NAME_RE = re.compile(r"^[一-鿿豈-﫿A-Za-z0-9_-]{2,16}$")
 # Characters we are willing to strip from the edges (quotes, punctuation, ws).
 _STRIP_CHARS = " \t\r\n\"'“”「」『』`。，、.,:：;；!！?？()（）[]【】{}"
+# Lone surrogates (U+D800..U+DFFF) are emitted by some reasoning models and
+# crash UTF-8 encoding downstream. Strip them before any further processing.
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _sanitize(text: str) -> str:
+    """Drop lone surrogate code points that can't be UTF-8 encoded."""
+    return _SURROGATE_RE.sub("", text)
 
 
 def generate_chinese_name(llm: LLMClient, first_user_msg: str) -> str | None:
@@ -27,9 +35,12 @@ def generate_chinese_name(llm: LLMClient, first_user_msg: str) -> str | None:
     prompt = NAMING_PROMPT.format(user_msg=first_user_msg.strip())
     try:
         raw = llm.chat([{"role": "user", "content": prompt}], tools=None)
-        text = raw["choices"][0]["message"]["content"] or ""
+        text = _sanitize(raw["choices"][0]["message"]["content"] or "")
     except Exception:
         return None
+    # Strip reasoning-model ``...</think> blocks first so the
+    # "first non-empty line" is the actual name, not the model's thinking.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     # Take the first non-empty line, strip surrounding punctuation/whitespace.
     name = ""
     for line in text.splitlines():
@@ -41,7 +52,7 @@ def generate_chinese_name(llm: LLMClient, first_user_msg: str) -> str | None:
         return None
     if not _NAME_RE.match(name):
         return None
-    return name
+    return _sanitize(name)
 
 
 def rename_session(
