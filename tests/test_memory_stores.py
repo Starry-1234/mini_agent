@@ -20,5 +20,11 @@ def test_local_vector_search():
     v.upsert("c", "cherry tart", None, {})
     v.upsert("d", "grape juice", None, {})
     res = v.search("banana", top_k=2)
-    ids = [r[0] for r in res]
-    assert "b" in ids
+    # search now returns (text, score, meta) — assert on text, not id
+    texts = [r[0] for r in res]
+    assert "banana split" in texts
+    # tuples must be (str, float, dict)
+    for r in res:
+        assert isinstance(r[0], str)
+        assert isinstance(r[1], float)
+        assert isinstance(r[2], dict)

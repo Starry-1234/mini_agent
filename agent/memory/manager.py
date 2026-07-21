@@ -39,12 +39,6 @@ class MemoryManager:
     def recall(self, sid: str | None, query: str, top_k: int | None = None) -> list[tuple[str, float, dict]]:
         k = top_k or self.top_k
         results = self.vector.search(query=query, top_k=k)
-        # Map ids back to stored text so callers receive (text, score, meta).
-        items = getattr(self.vector, "_items", {})
-        enriched = []
-        for i, s, m in results:
-            text = items.get(i, {}).get("text", "") if isinstance(items, dict) else ""
-            enriched.append((text, s, m))
         if sid is None:
-            return enriched
-        return [(t, s, m) for (t, s, m) in enriched if m.get("sid") == sid]
+            return list(results)
+        return [(t, s, m) for (t, s, m) in results if m.get("sid") == sid]

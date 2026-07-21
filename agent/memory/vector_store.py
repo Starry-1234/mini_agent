@@ -8,7 +8,8 @@ from typing import Protocol
 
 class VectorStore(Protocol):
     def upsert(self, id: str, text: str, vector: list[float] | None, meta: dict) -> None: ...
-    def search(self, query: str, top_k: int = 5) -> list[tuple[str, float, dict]]: ...
+    def search(self, query: str, top_k: int = 5) -> list[tuple[str, float, dict]]:
+        """Return (text, score, meta) tuples for the top_k matches."""
 
 
 def _cos(a: list[float], b: list[float]) -> float:
@@ -59,7 +60,7 @@ class LocalVectorStore:
             if intersection:
                 keyword_ids.add(item["id"])
                 keyword_scored.append(
-                    (item["id"], intersection / max(len(query_tokens | text_tokens), 1), item["meta"])
+                    (item["text"], intersection / max(len(query_tokens | text_tokens), 1), item["meta"])
                 )
 
         if self.embedder is not None:
@@ -71,7 +72,7 @@ class LocalVectorStore:
                 score = _cos(query_vector, item["vector"])
                 if item["id"] in keyword_ids:
                     score = max(score, 1.0)
-                scored.append((item["id"], score, item["meta"]))
+                scored.append((item["text"], score, item["meta"]))
             scored.sort(key=lambda result: result[1], reverse=True)
             return scored[:top_k]
 
@@ -111,7 +112,12 @@ class QdrantVectorStore:
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float, dict]]:
         qv = self._embedder.embed([query])[0]
         hits = self._client.search(self._collection, query_vector=qv, limit=top_k)
-        return [(str(hit.id), float(hit.score), dict(hit.payload)) for hit in hits]
+        out: list[tuple[str, float, dict]] = []
+        for hit in hits:
+            payload = dict(hit.payload or {})
+            text = payload.pop("text", "")
+            out.append((text, float(hit.score), payload))
+        return out
 
 
 class ChromaVectorStore:
@@ -131,13 +137,10 @@ class ChromaVectorStore:
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float, dict]]:
         result = self._collection.query(query_texts=[query], n_results=top_k)
-        ids = result.get("ids", [[]])[0]
         documents = result.get("documents", [[]])[0]
         metadatas = result.get("metadatas", [[]])[0]
         distances = result.get("distances", [[]])[0]
         return [
-            (item_id, 1.0 - float(distance), dict(metadata or {}))
-            for item_id, _document, metadata, distance in zip(
-                ids, documents, metadatas, distances
-            )
+            (document, 1.0 - float(distance), dict(metadata or {}))
+            for document, metadata, distance in zip(documents, metadatas, distances)
         ]
