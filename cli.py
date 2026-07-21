@@ -5,6 +5,14 @@ import re
 import sys
 from pathlib import Path
 
+# Force UTF-8 stdio so reasoning models / Chinese / emoji don't crash on
+# legacy Windows code pages (GBK / cp936) when they print to the terminal.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass  # Python < 3.7 or already closed
+
 from agent.config import Settings
 from agent.session import Session, SessionStore
 from agent.llm import LLMClient, MockLLMClient

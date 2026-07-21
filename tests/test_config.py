@@ -7,7 +7,7 @@ def test_defaults(tmp_path, monkeypatch):
               "LLM_BASE_URL", "EMBED_BASE_URL", "LLM_MODEL", "EMBED_MODEL",
               "SHORT_TERM_BACKEND", "VECTOR_BACKEND"]:
         monkeypatch.delenv(k, raising=False)
-    s = Settings.from_env(sessions_dir=tmp_path)
+    s = Settings.from_env(sessions_dir=tmp_path, load_dotenv=False)
     assert s.llm_api_key == ""
     assert s.short_term_backend == "memory"
     assert s.vector_backend == "local"
@@ -22,7 +22,7 @@ def test_env_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "gpt-x")
     monkeypatch.setenv("SHORT_TERM_BACKEND", "redis")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-    s = Settings.from_env(sessions_dir=tmp_path)
+    s = Settings.from_env(sessions_dir=tmp_path, load_dotenv=False)
     assert s.llm_api_key == "sk-test"
     assert s.llm_base_url == "https://x.example/v1"
     assert s.llm_model == "gpt-x"

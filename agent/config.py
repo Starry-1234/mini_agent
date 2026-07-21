@@ -4,6 +4,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _load_dotenv(start: Path | None = None) -> None:
+    """Load .env from the current directory (and parents) into os.environ.
+
+    Existing env vars take precedence — process env overrides file values.
+    Silently no-ops if python-dotenv is not installed (e.g. inside slim images
+    where deps are stripped) or if no .env file is found.
+    """
+    try:
+        from dotenv import find_dotenv, load_dotenv  # type: ignore
+    except ImportError:
+        return
+    path = find_dotenv(str(start) if start else ".env", usecwd=True)
+    if path:
+        load_dotenv(path, override=False)
+
+
 @dataclass(frozen=True)
 class Settings:
     llm_base_url: str = "https://api.deepseek.com/v1"
@@ -22,7 +38,9 @@ class Settings:
     sessions_dir: Path = field(default_factory=lambda: Path("sessions"))
 
     @classmethod
-    def from_env(cls, sessions_dir: Path | None = None) -> "Settings":
+    def from_env(cls, sessions_dir: Path | None = None, *, load_dotenv: bool = True) -> "Settings":
+        if load_dotenv:
+            _load_dotenv()
         def get(k, default=""):
             return os.environ.get(k, default)
         def getint(k, default):
