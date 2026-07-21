@@ -1,0 +1,6 @@
+openai>=1.30
+pytest>=8.0
+# optional backends
+redis>=5.0
+qdrant-client>=1.7
+chromadb>=0.4

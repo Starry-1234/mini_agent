@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-agent"
+version = "0.1.0"
+description = "From-scratch minimal Agent runtime in Python with tool calling, multi-window session isolation, basic context compression, and a three-layer pluggable memory system."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "mini-agent contributors" }]
+license = { text = "MIT" }
+dependencies = [
+    "openai>=1.30",
+    # optional memory backends
+    "redis>=5.0",
+    "qdrant-client>=1.7",
+    "chromadb>=0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools]
+packages = ["agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
