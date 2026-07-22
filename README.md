@@ -421,6 +421,25 @@ python cli.py --session test --once "what is 2+2?"
 
 ---
 
+### 6.11 Session picker (`starry` 启动器)
+
+把 `bin/` 加到 `PATH` 以后（参见 `bin/install_path.ps1` 或 `install_path.sh`），启动器提供三种调用方式：
+
+```bash
+starry          # 新会话（容器内自动生成 auto-XXX 名字）
+starry -c       # 续上：继续当前目录最近使用的会话（读 cwd 下的 .starry-recent）
+starry -resume  # 列表：从所有历史会话里挑一个（↑/↓ 移动，Enter 打开，Esc/q 取消）
+```
+
+- `starry -c` 把最近会话写到 cwd 下的 `.starry-recent`（JSON 列表，head 是最新）。如果该文件为空 / 文件中已不存在的会话被删了，会回退成新建会话并打印一条友好提示。
+- `starry -resume` 是跨目录的 TUI picker —— 列出来自 `sessions/*.json` 的全部会话（按 mtime 倒序），arrow keys 移动，回车打开。TTY 被重定向时（例如 CI）会回退为第一个（即最新）会话。
+- `-c` 和 `-resume` 可以组合成 `starry -c -resume`：先打开 picker 列出最近会话，再让用户挑。
+- 进程退出后，启动器会扫描 `sessions/`，把最新**有内容**的会话（`messages` 非空）插到 cwd 的 `.starry-recent` 头部，给 `starry -c` 下次用。
+
+实现见 `bin/starry.py`；Windows / POSIX 的薄壳分别是 `bin/starry.cmd` / `bin/starry`。
+
+---
+
 ## 7. License
 
 See `LICENSE`.
