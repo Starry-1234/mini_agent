@@ -71,7 +71,6 @@ def _cleanup_empty_auto_session(trace: TraceLogger, session: "Session", sessions
             pass
         try:
             trace.path.unlink()
-            print(f"[cleaned up empty auto trace: {trace.path.name}]")
         except FileNotFoundError:
             pass
     except Exception:
