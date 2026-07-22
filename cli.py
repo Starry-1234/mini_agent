@@ -80,10 +80,10 @@ def main() -> int:
 
     autonamer = AutoNamer() if auto_named else None
 
-    # Update the terminal window title so the user can tell multiple REPL
-    # windows apart at a glance. Reflects the current session id; will be
-    # refreshed again after auto-naming fires.
-    _set_terminal_title(f"✦ Starry Code · {session.id}")
+    # Initial window title: brand only. Matches the printed banner below; the
+    # session id is shown nowhere on the REPL until the user has given us
+    # something to name after (Claude Code pattern: brand -> auto name).
+    _set_terminal_title("✦ Starry Code")
 
     def ask(text: str) -> str:
         answer = run_turn(session, text, settings=settings, llm=llm,
@@ -91,15 +91,17 @@ def main() -> int:
         store.save(session)
         if autonamer is not None and autonamer.pending():
             autonamer.try_name(llm, text, session, trace, settings.sessions_dir)
-            # The session id may have changed; refresh the title.
-            _set_terminal_title(f"✦ Starry Code · {session.id}")
+            # The session id may have changed. Once named, the title
+            # drops the brand prefix and shows just the star + the new name
+            # (matches Claude Code: "✦ <session-name>").
+            _set_terminal_title(f"✦ {session.id}")
         return answer
 
     if args.once:
         print(ask(args.once))
         return 0
 
-    print(f"✦ Starry Code — session={session.id} (type 'exit' to quit)")
+    print("✦ Starry Code")
     while True:
         try:
             text = input("> ")
