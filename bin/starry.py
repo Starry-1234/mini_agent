@@ -152,8 +152,61 @@ class _KeyReader:
             return 'quit'
         return ch
 
+    def read_blocking(self) -> str:
+        """Block until a key is pressed. Cross-platform.
+
+        Polls the non-blocking ``read()`` with a short sleep between attempts
+        so we don't burn 100% CPU. Used by the picker so we only re-render
+        on actual keypresses (no 50ms tick redraws → no flicker on
+        Windows Terminal / PowerShell).
+        """
+        import time as _t
+        while True:
+            k = self.read()
+            if k is not None:
+                return k
+            _t.sleep(0.02)  # don't spin at 100% CPU
+
 
 # --- TUI picker ---
+
+# Constants kept module-level so render_picker can be hoisted for testing.
+BOX_WIDTH = 56
+PICKER_VISIBLE = 15
+
+
+def render_picker(sessions: list[tuple[str, float, int]], idx: int,
+                  box_width: int = BOX_WIDTH, visible: int = PICKER_VISIBLE) -> str:
+    """Build the full picker frame as a single string.
+
+    Pure function: same input → same output. Hoisted to module level so it
+    can be tested without spinning up a real terminal.
+    """
+    out: list[str] = []
+    # Position cursor at top, then clear from cursor down (so re-renders in
+    # the SAME window are flicker-free on Windows Terminal).
+    out.append("\033[H\033[J")
+    out.append("┌─ Starry Code — pick a session " + "─" * (box_width - 32) + "┐")
+    out.append("│   session" + " " * (box_width - 11) + " last used  │")
+    out.append("│" + "─" * (box_width + 2) + "│")
+    shown = sessions[:visible]
+    for k, (sid, mtime, _size) in enumerate(shown):
+        ago = fmt_time_ago(mtime)
+        marker = ">" if k == idx else " "
+        name = sid
+        max_name = box_width - len(ago) - 7
+        if len(name) > max_name:
+            name = name[:max_name - 1] + "…"
+        line = f"│ {marker} {name}  {ago}"
+        out.append(line.ljust(box_width + 1) + "│")
+    if len(sessions) > visible:
+        more = f"  (… {len(sessions) - visible} more, use ↑/↓ to scroll)"
+        out.append(more.ljust(box_width + 2) + "│")
+    out.append("│" + "─" * (box_width + 2) + "│")
+    out.append("│ ↑/↓ to move · enter to open · esc / q to quit " + " " * 6 + "│")
+    out.append("└" + "─" * (box_width + 2) + "┘")
+    return "\n".join(out) + "\n"
+
 
 def pick_session(sessions: list[tuple[str, float, int]]) -> str | None:
     """Interactive picker. Returns selected session id or None on cancel."""
@@ -164,47 +217,34 @@ def pick_session(sessions: list[tuple[str, float, int]]) -> str | None:
         return sessions[0][0]
 
     idx = 0
-    BOX_WIDTH = 56
-    VISIBLE = 15
+    shown_count = min(len(sessions), PICKER_VISIBLE)
 
     with _KeyReader() as kr:
-        while True:
-            # Move cursor home, clear below
-            sys.stdout.write("\033[H\033[J")
-            top = "┌─ Starry Code — pick a session " + "─" * (BOX_WIDTH - 32) + "┐"
-            sys.stdout.write(top + "\n")
-            # Header row
-            sys.stdout.write("│   session" + " " * (BOX_WIDTH - 11) + " last used  │\n")
-            sys.stdout.write("│" + "─" * (BOX_WIDTH + 2) + "│\n")
-            for i, (sid, mtime, _size) in enumerate(sessions[:VISIBLE]):
-                ago = fmt_time_ago(mtime)
-                marker = ">" if i == idx else " "
-                # Truncate long session names so they fit
-                name = sid
-                max_name = BOX_WIDTH - len(ago) - 7
-                if len(name) > max_name:
-                    name = name[:max_name - 1] + "…"
-                line = f"│ {marker} {name}  {ago}"
-                sys.stdout.write(line.ljust(BOX_WIDTH + 1) + "│\n")
-            if len(sessions) > VISIBLE:
-                more = f"  (… {len(sessions) - VISIBLE} more, use ↑/↓ to scroll)"
-                sys.stdout.write(more.ljust(BOX_WIDTH + 2) + "│\n")
-            sys.stdout.write("│" + "─" * (BOX_WIDTH + 2) + "│\n")
-            sys.stdout.write("│ ↑/↓ to move · enter to open · esc / q to quit " + " " * 6 + "│\n")
-            sys.stdout.write("└" + "─" * (BOX_WIDTH + 2) + "┘\n")
+        # Hide the terminal cursor while the picker is on screen.
+        sys.stdout.write("\033[?25l")
+        try:
+            sys.stdout.write(render_picker(sessions, idx))
             sys.stdout.flush()
-
-            key = kr.read()
-            if key is None:
-                continue
-            if key == 'up':
-                idx = max(0, idx - 1)
-            elif key == 'down':
-                idx = min(len(sessions[:VISIBLE]) - 1, idx + 1)
-            elif key == 'enter':
-                return sessions[idx][0]
-            elif key in ('esc', 'quit'):
-                return None
+            while True:
+                key = kr.read_blocking()
+                if key == 'up':
+                    idx = max(0, idx - 1)
+                elif key == 'down':
+                    idx = min(shown_count - 1, idx + 1)
+                elif key == 'enter':
+                    return sessions[idx][0]
+                elif key in ('esc', 'quit'):
+                    return None
+                else:
+                    # Unknown key — don't waste a redraw.
+                    continue
+                # Re-render ONLY after a real keypress that changed state.
+                sys.stdout.write(render_picker(sessions, idx))
+                sys.stdout.flush()
+        finally:
+            # Always restore the cursor, even on exception.
+            sys.stdout.write("\033[?25h")
+            sys.stdout.flush()
 
 
 # --- Record-after-exit ---

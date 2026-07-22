@@ -215,3 +215,66 @@ def test_record_most_recent_session_skips_corrupt_json(
 
     starry.record_most_recent_session()
     assert starry.load_recents() == ["good"]
+
+
+# ---------------------------------------------------------------------------
+# Picker render + key reader (anti-flicker fix)
+# ---------------------------------------------------------------------------
+
+def test_render_picker_deterministic(monkeypatch: pytest.MonkeyPatch):
+    """render_picker is a pure function: same input → same output.
+
+    This guards against accidental state-leak in the frame builder (e.g.
+    timestamp-dependent content that would make redraws flicker).
+    """
+    fake_now = 1_700_000_000.0
+    monkeypatch.setattr(starry.time, "time", lambda: fake_now)
+    sessions = [
+        ("foo", fake_now - 60, 100),
+        ("bar", fake_now - 3600, 200),
+    ]
+    out1 = starry.render_picker(sessions, idx=0)
+    out2 = starry.render_picker(sessions, idx=0)
+    assert out1 == out2
+    # Sanity: the marker actually moves when idx changes.
+    assert "> foo" in out1
+    assert "> bar" in starry.render_picker(sessions, idx=1)
+    assert "> foo" not in starry.render_picker(sessions, idx=1)
+
+
+def test_render_picker_includes_session_and_time(monkeypatch: pytest.MonkeyPatch):
+    """Spot-check that the frame contains the session id and a time label."""
+    fake_now = 1_700_000_000.0
+    monkeypatch.setattr(starry.time, "time", lambda: fake_now)
+    sessions = [("session-xyz", fake_now - 120, 42)]
+    out = starry.render_picker(sessions, idx=0)
+    assert "session-xyz" in out
+    assert "m ago" in out  # 120s → minutes
+
+
+def test_key_reader_read_blocking_returns_keys_in_order():
+    """read_blocking polls until a key arrives; here we feed scripted keys."""
+    # Build a subclass that bypasses real stdin/msvcrt by overriding read().
+    class Scripted(starry._KeyReader):
+        def __init__(self, keys):  # type: ignore[no-untyped-def]
+            # Skip parent's __init__ (which would try to import msvcrt/tty).
+            self._keys = list(keys)
+            self._i = 0
+
+        def read(self):  # type: ignore[override]
+            if self._i < len(self._keys):
+                k = self._keys[self._i]
+                self._i += 1
+                return k
+            return "enter"  # otherwise we'd loop forever
+
+        def __enter__(self):  # no tty mutation
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+    sk = Scripted(["up", "down", "enter"])
+    assert sk.read_blocking() == "up"
+    assert sk.read_blocking() == "down"
+    assert sk.read_blocking() == "enter"
