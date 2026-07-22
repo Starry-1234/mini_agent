@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import atexit
 import os
 import secrets
 import sys
@@ -15,7 +16,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass  # Python < 3.7 or already closed
 
 from starry_code.config import Settings
-from starry_code.session import SessionStore
+from starry_code.session import Session, SessionStore
 from starry_code.llm import LLMClient, MockLLMClient, make_default_mock_llm
 from starry_code.runtime import run_turn, build_default_registry, build_memory
 from starry_code.trace import TraceLogger
@@ -40,6 +41,41 @@ def _set_terminal_title(title: str) -> None:
         sys.stdout.flush()
     except Exception:
         pass
+
+
+def _cleanup_empty_auto_session(trace: TraceLogger, session: "Session", sessions_dir: Path) -> None:
+    """Delete the trace file if the auto-id session was never written to.
+
+    Triggered by REPL exit when all of these hold:
+      - session.id starts with "auto-" (user did not pass --session)
+      - the per-session .json does not exist (ask() never saved any turns)
+      - the trace file is 0 bytes (no events were emitted)
+
+    Manually-named sessions and --once mode are skipped (they always leave
+    real data). Failures are swallowed; cleanup is best-effort and must
+    never raise out of atexit.
+    """
+    try:
+        if not session.id.startswith("auto-"):
+            return
+        json_path = sessions_dir / f"{session.id}.json"
+        if json_path.exists():
+            return  # the user actually typed something — keep evidence
+        if trace.path is None or not trace.path.exists():
+            return
+        if trace.path.stat().st_size > 0:
+            return  # trace has events (e.g. errors); preserve for debugging
+        try:
+            trace.close()
+        except Exception:
+            pass
+        try:
+            trace.path.unlink()
+            print(f"[cleaned up empty auto trace: {trace.path.name}]")
+        except FileNotFoundError:
+            pass
+    except Exception:
+        pass  # never let cleanup raise out of atexit
 
 
 def main() -> int:
@@ -84,6 +120,12 @@ def main() -> int:
     # session id is shown nowhere on the REPL until the user has given us
     # something to name after (Claude Code pattern: brand -> auto name).
     _set_terminal_title("✦ Starry Code")
+
+    # In REPL mode, register a cleanup hook that deletes the 0-byte trace file
+    # if the user exits before typing anything. Skips silently in --once mode
+    # (where ask() is always called) and for manually-named sessions.
+    if not args.once:
+        atexit.register(_cleanup_empty_auto_session, trace, session, settings.sessions_dir)
 
     def ask(text: str) -> str:
         answer = run_turn(session, text, settings=settings, llm=llm,
