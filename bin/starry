@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Starry Code launcher (POSIX: bash / zsh / sh).
+# Works from any directory: resolves the project root from this
+# script's own location, then runs `docker compose run --rm agent`
+# with all forwarded arguments.
+#
+# Install: add this folder to PATH, e.g.
+#     echo 'export PATH="$PATH:/path/to/mini_agent/bin"' >> ~/.bashrc
+# Or symlink:
+#     ln -s /path/to/mini_agent/bin/starry ~/bin/starry
+#
+# Usage: starry [--session NAME] [--once "msg"] [--mock]
+#        starry --once "what is 2+2?"
+#        starry --session 天气查询
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "[starry] docker not found in PATH" >&2
+    exit 127
+fi
+
+cd "${PROJECT_ROOT}"
+exec docker compose run --rm agent "$@"
