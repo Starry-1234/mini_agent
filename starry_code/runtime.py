@@ -131,9 +131,13 @@ def run_turn(
 
     iters = 0
     while iters < settings.max_tool_iters:
-        # Builder reads the session (already containing the user message)
-        # and uses user_input for memory recall; it does not mutate history.
-        messages, _ = builder.build(session, user_input)
+        # Builder is now strictly side-effect free w.r.t. session: it reads
+        # history and returns a BuiltContext. If compression happened,
+        # BuiltContext.new_summary is non-None and we apply it ONCE here.
+        built = builder.build(session, user_input)
+        if built.new_summary is not None and built.new_summary != session.summary:
+            session.summary = built.new_summary
+        messages = built.messages
         raw = llm.chat(messages, tools=schemas)
         parsed = parse_response(raw)
         if parsed.thought:

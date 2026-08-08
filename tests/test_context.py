@@ -17,7 +17,8 @@ def test_build_basic(tmp_path):
     sess = Session(id="s")
     # The caller (runtime) is now responsible for adding the user message.
     sess.add_user("what's up?")
-    msgs, tools = cb.build(sess, "what's up?")
+    built = cb.build(sess, "what's up?")
+    msgs, tools = built.messages, built.tool_schemas
     assert msgs[0]["role"] == "system"
     assert msgs[-1] == {"role": "user", "content": "what's up?"}
     assert isinstance(tools, list)
@@ -52,7 +53,8 @@ def test_context_triggers_summary_when_long(tmp_path):
     ])
     # Caller adds the user turn before building.
     sess.add_user("next q")
-    msgs, _ = cb.build(sess, "next q")
+    built = cb.build(sess, "next q")
+    msgs = built.messages
     # summary appears as a system message after the first system
     sys_msgs = [m for m in msgs if m["role"] == "system"]
     assert any("summary text" in m["content"] for m in sys_msgs)

@@ -36,9 +36,33 @@ class MemoryManager:
             self.vector.upsert(id=fid, text=fact, vector=None, meta=meta)
         return len(facts)
 
-    def recall(self, sid: str | None, query: str, top_k: int | None = None) -> list[tuple[str, float, dict]]:
+    def recall(self, sid: str | None, query: str, top_k: int | None = None,
+ *, cross_session: bool = False,
+ ) -> list[tuple[str, float, dict]]:
+        """Recall facts relevant to `query`.
+
+        Args:
+            sid: current session id. If None and cross_session=False, returns
+                all matching facts (no filtering).
+            query: natural-language query used for vector search.
+            top_k: override the manager's default top_k for this call.
+            cross_session: if True, ignore the `sid` filter and return facts
+                from any session. Used by the coach to surface long-term
+                learner profile (tech stack, prior projects, etc.) that
+                transcends the current session.
+
+        Returns:
+            List of (text, score, meta) tuples, already filtered and ranked.
+        """
         k = top_k or self.top_k
-        results = self.vector.search(query=query, top_k=k)
+        # Always pull more when crossing sessions so the filter has headroom.
+        fetch_k = k * 3 if cross_session else k
+        results = self.vector.search(query=query, top_k=fetch_k)
+
+        if cross_session:
+            # Return all matches; caller may further filter by meta (kind, etc.)
+            return list(results)[:k]
+
         if sid is None:
             return list(results)
         return [(t, s, m) for (t, s, m) in results if m.get("sid") == sid]
