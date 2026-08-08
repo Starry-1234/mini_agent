@@ -113,8 +113,11 @@ def render_repl_startup(session: "Session", stream=None) -> None:
     #    doesn't bleed into this one. Standard ANSI CSI sequences; ignored
     #    on streams that can't interpret them.
     out.write(_CLEAR_SCREEN)
-    # 2) Header: which session am I in?
-    out.write(f"\033[1m✦ {session.id}\033[0m\n")
+    # 2) Header: which session am I in? Auto-id sessions show the brand
+    #    "Starry Code" instead of the ugly auto-20260808-...-xxxx slug —
+    #    matches what _set_terminal_title() does for the window title bar.
+    display_id = "Starry Code" if session.id.startswith("auto-") else session.id
+    out.write(f"\033[1m✦ {display_id}\033[0m\n")
     # 3) If resuming a session with messages, replay them so the user has
     #    immediate context. Skip for fresh sessions (no history to show).
     if session.messages:

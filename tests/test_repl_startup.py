@@ -46,6 +46,18 @@ def test_render_startup_shows_session_header(capsys):
     assert "Java学习指南" in out
 
 
+def test_render_startup_auto_id_falls_back_to_brand(capsys):
+    """Regression: fresh REPL sessions get an auto-xxx id (e.g.
+    'auto-20260808-091228-b2ff'). Showing that raw slug in the header is
+    ugly. Must fall back to the brand 'Starry Code' — matching what
+    _set_terminal_title() does for the window title bar."""
+    s = Session(id="auto-20260808-091228-b2ff")
+    render_repl_startup(s, stream=sys_stdout())
+    out = capsys.readouterr().out
+    assert "Starry Code" in out, "auto-id should show brand fallback"
+    assert "auto-20260808" not in out, "raw auto slug must not leak"
+
+
 def test_render_startup_shows_loaded_history(capsys):
     """Regression: when REPL starts with a non-empty session (e.g. via
     -c), the previous conversation must be visible to the user."""
