@@ -15,11 +15,42 @@
         +
 ```
 
-A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-use loop, three-layer pluggable memory, and basic context compression — built on top of any OpenAI-compatible chat API (DeepSeek / GLM / 豆包 / OpenAI) without LangGraph, OpenHands, or any agent framework.
+A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-use loop, three-layer pluggable memory, and basic context compression — built on top of any OpenAI-compatible chat API (DeepSeek / GLM / 豆包 / OpenAI / MiniMax) without LangGraph, OpenHands, or any agent framework.
 
 > Spec: [`docs/superpowers/specs/2026-07-21-mini-agent-design.md`](docs/superpowers/specs/2026-07-21-mini-agent-design.md)
 > Architecture Q&A: [`docs/ARCHITECTURE_QA.md`](docs/ARCHITECTURE_QA.md)
 > Prompt log: [`docs/PROMPTS_LOG.md`](docs/PROMPTS_LOG.md)
+
+## ✨ 特性
+
+- **多窗口 CLI** — 任何目录 `starry` 启动；`starry -c` 续当前目录最近会话；`starry -resume` TUI 选择（↑/↓/Enter/Esc）
+- **自动中文 session 名** — 第一轮 user 输入后，LLM 起 2-6 字中文 slug（如 `天气查询`、`周报撰写`），文件自动 rename，窗口标题跟着变
+- **窗口标题** — 启动时 `✦ Starry Code`，auto-rename 后变 `✦ <session名>`（仿 Claude Code 风格）
+- **真多模型** — OpenAI-compatible 任意 chat（DeepSeek/GLM/豆包/MiniMax） + 任意 embedding（阿里百炼 v3 等）
+- **三层可插拔 memory** — short-term (进程内 deque / Redis) + episodic (rolling summary) + semantic (vector store，real embedding)
+- **思考链自动剥离** — 兼容 reasoning 模型（MiniMax-M3、DeepSeek-R1），`<think>...</think>` 自动从最终答案剥掉但 trace 里保留
+- **4 个工具开箱** — calculator（AST 沙箱，真算）、todo（持久化）、weather/search（mock，可替换）
+- **Docker 一键跑** — `docker compose build && docker compose run --rm agent`，含 `develop: watch` 热重载配置
+- **85 个单测** — 覆盖 runtime / parser / tools / session / memory / naming / launcher
+
+## 🚀 30 秒上手
+
+```bash
+# 1) 安装（只用 openai 一个必需依赖）
+pip install -r requirements.txt
+
+# 2) 配 key（任何 OpenAI-compatible endpoint 都行）
+cp .env.example .env
+# 编辑 .env：LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+# 可选：EMBED_* 也填上，记忆系统就跑真实 embedding
+
+# 3) 跑
+python cli.py --once "what is 2+2?"
+# → "2 + 2 = 4"  （MiniMax-M3 真 LLM 回的）
+
+# 或 REPL 模式（输入 "exit" 退出）
+python cli.py --session demo
+```
 
 ---
 
@@ -43,22 +74,30 @@ cp .env.example .env
 # then edit .env and set LLM_API_KEY (and optionally EMBED_* for vector search)
 ```
 
-`.env.example` defaults point at DeepSeek; switch `LLM_BASE_URL` / `LLM_MODEL` to use GLM, 豆包, OpenAI, or any other OpenAI-compatible endpoint.
+`.env.example` defaults point at DeepSeek; switch `LLM_BASE_URL` / `LLM_MODEL` to use GLM, 豆包, OpenAI, MiniMax, or any other OpenAI-compatible endpoint.
 
-### 1.2 Basic commands
+### 1.2 Basic commands (推荐 `starry` 启动器)
+
+加 `bin/` 到 PATH 后（见 §6.11），任意目录：
 
 ```bash
-# Interactive session (recommended for chatting)
-python cli.py --session w1
+starry                # 新会话：第一轮后 LLM 自动起中文名（如"天气查询"）
+starry -c             # 续聊：读当前目录的 .starry-recent，继续最近会话
+starry -resume        # TUI 选择：↑/↓ 移动，Enter 打开，Esc 取消
+starry --once "..."   # 单次问答
+starry --session foo  # 指定会话名（覆盖自动命名）
+starry --mock         # 离线模式（不调真 LLM）
 
-# A second terminal opens a different window — completely isolated state
-python cli.py --session w2
+# 透传所有 cli.py 参数：--once, --session, --mock 等都可加
+starry -c --mock --once "ping"
+```
 
-# One-shot: send a single prompt and exit
-python cli.py --session w1 --once "What is 2*(3+4)?"
+不用启动器，直接调 `cli.py`（Docker 容器里就是这条）：
 
-# Offline / no-API smoke (uses a deterministic MockLLMClient)
-python cli.py --session demo --mock --once "ping"
+```bash
+python cli.py --session w1                  # REPL
+python cli.py --session w2 --once "你好"     # 单次
+python cli.py --mock --once "ping"           # 离线
 ```
 
 ### 1.3 End-to-end demo
@@ -426,15 +465,22 @@ python cli.py --session test --once "what is 2+2?"
 把 `bin/` 加到 `PATH` 以后（参见 `bin/install_path.ps1` 或 `install_path.sh`），启动器提供三种调用方式：
 
 ```bash
-starry          # 新会话（容器内自动生成 auto-XXX 名字）
+starry          # 新会话：容器内 auto-id，第一轮后 LLM 自动起中文名（如"天气查询"）
 starry -c       # 续上：继续当前目录最近使用的会话（读 cwd 下的 .starry-recent）
 starry -resume  # 列表：从所有历史会话里挑一个（↑/↓ 移动，Enter 打开，Esc/q 取消）
 ```
 
 - `starry -c` 把最近会话写到 cwd 下的 `.starry-recent`（JSON 列表，head 是最新）。如果该文件为空 / 文件中已不存在的会话被删了，会回退成新建会话并打印一条友好提示。
-- `starry -resume` 是跨目录的 TUI picker —— 列出来自 `sessions/*.json` 的全部会话（按 mtime 倒序），arrow keys 移动，回车打开。TTY 被重定向时（例如 CI）会回退为第一个（即最新）会话。
+- `starry -resume` 是跨目录的 TUI picker —— 列出来自 `sessions/*.json` 的全部会话（按 mtime 倒序），arrow keys 移动，回车打开。TTY 被重定向时（例如 CI）会回退为第一个（即最新）会话。TUI 只在按键时重绘，不闪。
 - `-c` 和 `-resume` 可以组合成 `starry -c -resume`：先打开 picker 列出最近会话，再让用户挑。
 - 进程退出后，启动器会扫描 `sessions/`，把最新**有内容**的会话（`messages` 非空）插到 cwd 的 `.starry-recent` 头部，给 `starry -c` 下次用。
+
+**窗口标题**（terminal title bar）：
+- `starry` → 启动时显示 `✦ Starry Code`，auto-rename 后变 `✦ <中文名>`
+- `starry -c` / `starry --session foo` → 立即显示 `✦ foo`（不再走品牌）
+- `starry -resume` → 选中后立即显示 `✦ <选中的>`
+
+**静默 cleanup**：空载启动后立即 exit（"看了一眼就走"），会留 0 字节 `auto-XXX.trace.jsonl` 污染 sessions/。`cli.py` 的 atexit 钩子会静默删掉，前提是这个 auto session 没保存过任何消息。
 
 实现见 `bin/starry.py`；Windows / POSIX 的薄壳分别是 `bin/starry.cmd` / `bin/starry`。
 
