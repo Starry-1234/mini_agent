@@ -43,6 +43,86 @@ def _set_terminal_title(title: str) -> None:
         pass
 
 
+# ---- REPL startup rendering ----
+#
+# These are split out so they can be unit-tested with pytest's capsys
+# without spinning up a real REPL. They handle:
+#   1. Display isolation — clear screen + scrollback so the previous
+#      session's output doesn't leak into this one (Claude Code style).
+#   2. History replay — when resuming a session via --session / -c /
+#      -resume, the user can see what they were talking about last time.
+
+# ANSI: \033[H = home cursor, \033[2J = clear screen, \033[3J = clear scrollback.
+# Combined so the visible area AND the scrollback buffer are wiped in one go.
+_CLEAR_SCREEN = "\033[H\033[2J\033[3J"
+# History block dimensions — kept short so it fits on a typical terminal.
+_HISTORY_DIVIDER = "─" * 60
+_ASSISTANT_PREVIEW_CHARS = 600
+_USER_PREVIEW_CHARS = 400
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    """Truncate `text` to `max_chars`, appending an ellipsis if cut."""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "…"
+
+
+def print_session_history(session: "Session", stream=None) -> None:
+    """Print the session's prior conversation as a compact history block.
+
+    Skips tool-call / tool-result messages (noisy and not useful for the
+    human reading back). Truncates very long assistant messages.
+
+    Pure write to `stream`; no side effects on session.
+    """
+    out = stream or sys.stdout
+    if not session.messages:
+        return
+    out.write(_HISTORY_DIVIDER + "\n")
+    out.write("[history]\n")
+    out.write(_HISTORY_DIVIDER + "\n")
+    for m in session.messages:
+        role = m.get("role", "")
+        content = m.get("content") or ""
+        if not content:
+            continue
+        if role == "user":
+            preview = _truncate(content, _USER_PREVIEW_CHARS)
+            out.write(f"\033[36m> {preview}\033[0m\n")
+        elif role == "assistant":
+            preview = _truncate(content, _ASSISTANT_PREVIEW_CHARS)
+            out.write(f"\033[32m{preview}\033[0m\n")
+        # tool / system / unknown: skip — too noisy for a glance-back block
+    out.write(_HISTORY_DIVIDER + "\n")
+
+
+def render_repl_startup(session: "Session", stream=None) -> None:
+    """Render the REPL startup frame: clear screen, header, optional history.
+
+    Called once when the REPL enters its input loop, both for fresh
+    sessions and for resumed sessions via --session / -c / -resume.
+
+    Side effects:
+      - Writes ANSI escape sequences to `stream` (or sys.stdout).
+      - Does NOT touch session state — pure presentation.
+    """
+    out = stream or sys.stdout
+    # 1) Display isolation: wipe both the visible screen and the scrollback
+    #    so content from a previous REPL session in the same terminal
+    #    doesn't bleed into this one. Standard ANSI CSI sequences; ignored
+    #    on streams that can't interpret them.
+    out.write(_CLEAR_SCREEN)
+    # 2) Header: which session am I in?
+    out.write(f"\033[1m✦ {session.id}\033[0m\n")
+    # 3) If resuming a session with messages, replay them so the user has
+    #    immediate context. Skip for fresh sessions (no history to show).
+    if session.messages:
+        out.write("\n")
+        print_session_history(session, stream=out)
+        out.write("\n")
+
+
 def _cleanup_empty_auto_session(trace: TraceLogger, session: "Session", sessions_dir: Path) -> None:
     """Delete the trace file if the auto-id session was never written to.
 
@@ -149,7 +229,9 @@ def main() -> int:
         print(ask(args.once))
         return 0
 
-    print("✦ Starry Code")
+    # REPL startup frame: clear screen + header + (optional) history replay.
+    # See render_repl_startup() docstring for the rationale.
+    render_repl_startup(session)
     while True:
         try:
             text = input("> ")
