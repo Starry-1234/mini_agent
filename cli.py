@@ -115,10 +115,17 @@ def main() -> int:
 
     autonamer = AutoNamer() if auto_named else None
 
-    # Initial window title: brand only. Matches the printed banner below; the
-    # session id is shown nowhere on the REPL until the user has given us
-    # something to name after (Claude Code pattern: brand -> auto name).
-    _set_terminal_title("✦ Starry Code")
+    # Initial window title:
+    #   - For auto-id sessions (no --session), show the brand only; the
+    #     session gets a Chinese name after the first turn and the title
+    #     drops the brand prefix in ask() below.
+    #   - For pre-named sessions (--session foo, or -c / -resume picking one),
+    #     show the session name immediately so the resumed session's title
+    #     shows up at startup instead of the generic brand.
+    if session.id.startswith("auto-"):
+        _set_terminal_title("✦ Starry Code")
+    else:
+        _set_terminal_title(f"✦ {session.id}")
 
     # In REPL mode, register a cleanup hook that deletes the 0-byte trace file
     # if the user exits before typing anything. Skips silently in --once mode
