@@ -20,6 +20,8 @@ from .memory.vector_store import (
     QdrantVectorStore,
 )
 from .context import ContextBuilder
+from .prompts import SYSTEM_PROMPT
+from .session import _OLD_SYSTEM_PROMPT
 from .trace import TraceLogger
 
 # Minimum combined content length (user + assistant, thinking stripped) for a
@@ -117,6 +119,12 @@ def run_turn(
         multiple times, but the builder is now side-effect free with respect
         to session history (it uses `user_input` only for memory recall).
     """
+    # Defensive: if a Session was constructed without going through
+    # SessionStore.load() (e.g. a test or future code path), make sure it
+    # still carries the live coach prompt instead of the Phase 0 dead default.
+    if not session.system_prompt or session.system_prompt == _OLD_SYSTEM_PROMPT:
+        session.system_prompt = SYSTEM_PROMPT
+
     # 1) Push to short-term memory.
     memory.push_turn(session.id, {"role": "user", "content": user_input})
     # 2) Trace the user input.
