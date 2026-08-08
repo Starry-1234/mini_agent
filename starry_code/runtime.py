@@ -8,6 +8,7 @@ from .tools.base import ToolResult
 from .tools.calculator import CalculatorTool
 from .tools.registry import ToolRegistry
 from .tools.search import SearchTool
+from .tools.tech_trend import TechTrendTool
 from .tools.todo import TodoTool
 from .tools.weather import WeatherTool
 from .memory.embeddings import MockEmbedder
@@ -40,13 +41,14 @@ def _should_extract(user_text: str, answer_text: str) -> bool:
 
 
 def build_default_registry() -> ToolRegistry:
-    """Register the four built-in tools: calculator, search, todo, weather."""
+    """Register the built-in tools: calculator, search, todo, weather, tech_trend."""
     reg = ToolRegistry()
     reg.register_all([
         CalculatorTool(),
         SearchTool(),
         TodoTool(),
         WeatherTool(),
+        TechTrendTool(),
     ])
     return reg
 
