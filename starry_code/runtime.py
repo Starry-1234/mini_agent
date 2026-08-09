@@ -125,6 +125,14 @@ def run_turn(
     if not session.system_prompt or session.system_prompt == _OLD_SYSTEM_PROMPT:
         session.system_prompt = SYSTEM_PROMPT
 
+    # Sanitize user_input at the entry point: Windows console input (e.g.
+    # DELETE key) can produce lone surrogates (U+D800..U+DFFF) which UTF-8
+    # strictly forbids. .encode("utf-8") inside the embedder (and any
+    # other sink downstream) would otherwise crash. Stripping here makes
+    # every downstream path safe.
+    import re as _re_user
+    user_input = _re_user.sub(r"[\ud800-\udfff]", "", user_input)
+
     # 1) Push to short-term memory.
     memory.push_turn(session.id, {"role": "user", "content": user_input})
     # 2) Trace the user input.

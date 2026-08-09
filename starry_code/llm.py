@@ -6,8 +6,20 @@ import re
 from typing import Any
 
 
+# Strip lone surrogates (U+D800..U+DFFF) so .encode("utf-8") doesn't crash.
+# See memory/embeddings.py for the same rationale.
+_SURROGATE_RE_LLM = re.compile(r"[\ud800-\udfff]")
+
+
+def _strip_surrogates_llm(text: str) -> str:
+    if not text:
+        return text
+    return _SURROGATE_RE_LLM.sub("", text)
+
+
 def _hash_vec(text: str, dim: int = 16) -> list[float]:
-    h = hashlib.sha256(text.encode("utf-8")).digest()
+    safe = _strip_surrogates_llm(text)
+    h = hashlib.sha256(safe.encode("utf-8")).digest()
     out = []
     for i in range(dim):
         byte = h[i % len(h)]
