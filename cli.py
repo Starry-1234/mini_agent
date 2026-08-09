@@ -9,11 +9,35 @@ from pathlib import Path
 
 # Force UTF-8 stdio so reasoning models / Chinese / emoji don't crash on
 # legacy Windows code pages (GBK / cp936) when they print to the terminal.
+# `errors="replace"` is critical: without it, UTF-8 strictly forbids surrogate
+# codepoints (U+D800-U+DFFF), and reasoning models like MiniMax-M3 sometimes
+# emit them — every `print(answer)` would then crash. With "replace" the
+# offending bytes become `�` (replacement char) so the user still sees
+# output instead of an exception.
 for _stream in (sys.stdout, sys.stderr):
     try:
-        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         pass  # Python < 3.7 or already closed
+
+
+# Shared surrogate-strip helper. Used by both print() paths (cli.py) and
+# trace._print() so a stray codepoint anywhere can't crash the REPL.
+import re as _re
+_SURROGATE_RE = _re.compile(r"[\ud800-\udfff]")
+
+
+def _strip_surrogates(text: str) -> str:
+    """Remove surrogate codepoints (U+D800..U+DFFF) from `text`.
+
+    Reasoning models occasionally emit these mid-response. UTF-8 forbids
+    them, so any `sys.stdout.write()` would otherwise raise
+    UnicodeEncodeError. Returning a clean string is safer than `errors=
+    "replace"` (which gives �) — the user sees the real text.
+    """
+    if not text:
+        return text
+    return _SURROGATE_RE.sub("", text)
 
 from starry_code.config import Settings
 from starry_code.session import Session, SessionStore
@@ -248,7 +272,10 @@ def main() -> int:
             return 0
         try:
             ans = ask(s)
-            print(ans)
+            # Strip surrogates before printing — reasoning models (MiniMax-M3,
+            # DeepSeek-R1) sometimes emit U+D800..U+DFFF which UTF-8 rejects
+            # with UnicodeEncodeError. See _strip_surrogates() for context.
+            print(_strip_surrogates(ans))
         except Exception as e:  # noqa: BLE001
             trace.event("error", message=str(e))
             print(f"[error] {e}", file=sys.stderr)
