@@ -1,5 +1,6 @@
 # agent/runtime.py
 from __future__ import annotations
+import re
 
 from .config import Settings
 from .llm import LLMClient
@@ -11,6 +12,8 @@ from .tools.search import SearchTool
 from .tools.tech_trend import TechTrendTool
 from .tools.todo import TodoTool
 from .tools.weather import WeatherTool
+from .tools.read_artifact import ReadArtifactTool
+from .tools.update_plan import UpdatePlanTool
 from .memory.embeddings import MockEmbedder
 from .memory.manager import MemoryManager
 from .memory.short_term import InMemoryShortTermStore, RedisShortTermStore
@@ -28,6 +31,18 @@ from .trace import TraceLogger
 # turn to be considered "substantive enough" to run LLM fact extraction on.
 _MIN_EXTRACT_CHARS = 80
 
+# --- Phase 2: dynamic plan-adjustment triggers ---
+# Keywords that suggest the user is asking the coach to revisit the plan.
+# These are checked in user_input; a hit causes a tech_trend recheck and
+# the response naturally reflects fresh data (the coach prompt then steers
+# the LLM toward update_plan if anything truly changed).
+_TRIGGER_KEYWORDS = re.compile(
+    r"(最新|行情|趋势|前景|还值得|还要不要|该(不该|不该)|换.+方向|调整|重新规划|对一下|核对|行情如何|换方向)",
+    re.IGNORECASE,
+)
+_TRIGGER_INTERVAL_DAYS = 7
+_TRIGGER_MILESTONE_TODOS = 3
+
 
 def _should_extract(user_text: str, answer_text: str) -> bool:
     """Guard LLM cost: only extract facts from substantive turns.
@@ -43,7 +58,13 @@ def _should_extract(user_text: str, answer_text: str) -> bool:
 
 
 def build_default_registry() -> ToolRegistry:
-    """Register the built-in tools: calculator, search, todo, weather, tech_trend."""
+    """Register the built-in tools:
+    calculator, search, todo, weather, tech_trend, update_plan, read_artifact.
+
+    Phase 2 additions:
+    - update_plan: coach's only sanctioned way to mutate plan_cache
+    - read_artifact: lets the coach pull back full offloaded tool output
+    """
     reg = ToolRegistry()
     reg.register_all([
         CalculatorTool(),
@@ -51,8 +72,85 @@ def build_default_registry() -> ToolRegistry:
         TodoTool(),
         WeatherTool(),
         TechTrendTool(),
+        UpdatePlanTool(),
+        ReadArtifactTool(),
     ])
     return reg
+
+
+# ---- Phase 2: dynamic plan-adjustment triggers ----
+
+def _should_adjust_plan(session: Session, user_input: str) -> tuple[bool, str]:
+    """Decide whether to re-check tech trends before composing the reply.
+
+    Returns (should, reason). Three trigger classes:
+      - user_keyword: user used words like "行情/趋势/前景/调整" → force recheck
+      - stale_7d:     plan_cache.last_updated > 7 days ago → recheck
+      - milestone:   ≥3 todos completed but plan still at v0/v1 → suggest re-plan
+
+    These are *advisory* — they only inject a tech_trend result into the
+    short-term memory so the LLM has fresh data. The LLM decides whether
+    to actually call update_plan based on what it sees.
+    """
+    if _TRIGGER_KEYWORDS.search(user_input or ""):
+        return True, "user_keyword"
+
+    pc = getattr(session, "plan_cache", {}) or {}
+    last = pc.get("last_updated")
+    if last:
+        try:
+            from datetime import datetime, timezone, timedelta
+            last_dt = datetime.fromisoformat(last)
+            if datetime.now(timezone.utc) - last_dt > timedelta(days=_TRIGGER_INTERVAL_DAYS):
+                return True, "stale_7d"
+        except (ValueError, TypeError):
+            pass  # malformed timestamp — ignore, don't crash
+
+    done = sum(1 for t in (session.todos or []) if t.get("done"))
+    pc_version = pc.get("version", 0)
+    if done >= _TRIGGER_MILESTONE_TODOS and pc_version <= 1:
+        return True, f"milestone_{done}_done_v{pc_version}"
+
+    return False, ""
+
+
+def _inject_trend_for_adjustment(
+    registry: ToolRegistry,
+    session: Session,
+    memory: MemoryManager,
+    user_input: str,
+    trace: TraceLogger,
+) -> None:
+    """When a trigger fires, refresh trend data and inject it into the
+    short-term memory. The next LLM call will see the new facts without us
+    having to mutate plan_cache ourselves — the LLM will call update_plan
+    if the data warrants a real change.
+
+    Picks candidate topics from plan_cache.long_term_goal + the user_input,
+    deduped, and queries up to 3. Failures are swallowed (best-effort).
+    """
+    pc = getattr(session, "plan_cache", {}) or {}
+    candidates: set[str] = set()
+
+    if pc.get("long_term_goal"):
+        candidates.update(
+            w for w in re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}", pc["long_term_goal"])
+        )
+    if user_input:
+        candidates.update(
+            w for w in re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}", user_input)
+        )
+
+    for topic in list(candidates)[:3]:
+        result = registry.execute("tech_trend", {"topic": topic.lower()}, session)
+        trace.event("trend_recheck", topic=topic, ok=result.ok)
+        if result.ok:
+            memory.push_turn(session.id, {
+                "role": "tool",
+                "name": "tech_trend_recheck",
+                "content": result.content,
+                "topic": topic,
+            })
 
 
 def build_memory(settings: Settings, llm: LLMClient | None) -> MemoryManager:
@@ -210,6 +308,20 @@ def run_turn(
                 )
             except Exception:
                 pass
+
+        # Phase 2: dynamic plan-adjustment trigger. After a successful turn,
+        # check if the user implied "check the trend again" or if the plan
+        # is stale. If so, re-query tech_trend and inject results into the
+        # short-term memory so the next turn's LLM has fresh data.
+        try:
+            should, reason = _should_adjust_plan(session, user_input)
+            if should:
+                trace.event("plan_adjust_trigger", reason=reason)
+                _inject_trend_for_adjustment(registry, session, memory, user_input, trace)
+        except Exception:
+            # Best-effort; never let adjust logic block the response.
+            pass
+
         return answer
 
     # Force finalise when we exhaust tool iterations.

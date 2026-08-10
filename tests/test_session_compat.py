@@ -47,7 +47,8 @@ def test_current_session_field_types_are_json_safe():
 def test_current_session_field_names():
     """Document the current schema. If you add a field, update this test."""
     names = {f.name for f in fields(Session)}
-    assert names == {"id", "system_prompt", "messages", "todos", "summary"}, (
+    assert names == {"id", "system_prompt", "messages", "todos", "summary",
+                     "plan_cache"}, (
         f"Session fields changed: {names}. Update test_session_compat.py and "
         "ensure all new fields are JSON-serialisable."
     )

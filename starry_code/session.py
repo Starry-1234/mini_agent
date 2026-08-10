@@ -17,6 +17,19 @@ def _gen_id() -> str:
 _OLD_SYSTEM_PROMPT = "You are a helpful Agent. Use tools when needed."
 
 
+def _default_plan_cache() -> dict:
+    """Phase 2 hot-cache shape. All fields are strings/ints so asdict()
+    round-trips cleanly through JSON. Returned fresh per Session instance
+    so no two sessions share state."""
+    return {
+        "version": 0,         # bumped every time the LLM calls update_plan
+        "stage": "",          # current milestone, e.g. "阶段1：基础语法"
+        "next_task": "",      # the single next action the user should take
+        "long_term_goal": "", # the user's stated goal (set from first turn)
+        "last_updated": "",   # ISO 8601 UTC timestamp
+    }
+
+
 @dataclass
 class Session:
     id: str
@@ -27,6 +40,10 @@ class Session:
     messages: list[dict] = field(default_factory=list)
     todos: list[dict] = field(default_factory=list)
     summary: str = ""
+    # Phase 2: hot-cache of the active learning plan. Always present (so
+    # context.py can read it without getattr defaults). ~50 tokens when
+    # injected, so it's cheap to keep in every LLM call.
+    plan_cache: dict = field(default_factory=_default_plan_cache)
 
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
@@ -73,12 +90,17 @@ class SessionStore:
         stored_prompt = data.get("system_prompt", "")
         if not stored_prompt or stored_prompt == _OLD_SYSTEM_PROMPT:
             stored_prompt = SYSTEM_PROMPT
+        # Phase 2 migration: sessions saved before plan_cache existed get
+        # the default empty cache. Merge rather than replace so any partial
+        # state from a half-written save is preserved.
+        plan_cache = data.get("plan_cache") or _default_plan_cache()
         return Session(
             id=data.get("id", sid),
             system_prompt=stored_prompt,
             messages=data.get("messages", []),
             todos=data.get("todos", []),
             summary=data.get("summary", ""),
+            plan_cache=plan_cache,
         )
 
     def save(self, s: Session) -> None:

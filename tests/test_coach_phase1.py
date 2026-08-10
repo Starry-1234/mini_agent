@@ -142,8 +142,9 @@ def test_mock_pipeline_includes_coach_prompt():
     with tempfile.TemporaryDirectory() as td:
         s = Settings(sessions_dir=Path(td))
         reg = build_default_registry()
-        # 5 个工具（4 + tech_trend）
-        assert len(reg.names()) == 5
+        # Phase 2 added 2 more tools: update_plan, read_artifact → 7 total
+        # (calculator, search, todo, weather, tech_trend, update_plan, read_artifact)
+        assert len(reg.names()) == 7
         # memory 可以正常装配（mock embedder）
         mem = build_memory(settings=s, llm=None)
         assert mem is not None
