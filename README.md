@@ -20,6 +20,7 @@ A from-scratch, minimum-viable agent runtime in Python. Multi-session CLI, tool-
 > Spec: [`docs/superpowers/specs/2026-07-21-mini-agent-design.md`](docs/superpowers/specs/2026-07-21-mini-agent-design.md)
 > Architecture Q&A: [`docs/ARCHITECTURE_QA.md`](docs/ARCHITECTURE_QA.md)
 > Prompt log: [`docs/PROMPTS_LOG.md`](docs/PROMPTS_LOG.md)
+> Phase 3 design: [`docs/PHASE3_DESIGN.md`](docs/PHASE3_DESIGN.md)
 
 ## ✨ 特性
 
@@ -314,6 +315,7 @@ starry_code/
 │   └── demo_weather_todo.py       # end-to-end "weather + todo" scenario
 ├── docs/
 │   ├── ARCHITECTURE_QA.md         # answers to the 5 architecture design modules
+│   ├── PHASE3_DESIGN.md           # real data sources + new tools + Web UI roadmap
 │   ├── PROMPTS_LOG.md             # chronological log of decisions & prompts
 │   └── superpowers/
 │       ├── plans/                 # implementation plan (untracked)
