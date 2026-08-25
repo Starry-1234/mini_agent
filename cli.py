@@ -21,23 +21,10 @@ for _stream in (sys.stdout, sys.stderr):
         pass  # Python < 3.7 or already closed
 
 
-# Shared surrogate-strip helper. Used by both print() paths (cli.py) and
-# trace._print() so a stray codepoint anywhere can't crash the REPL.
-import re as _re
-_SURROGATE_RE = _re.compile(r"[\ud800-\udfff]")
-
-
-def _strip_surrogates(text: str) -> str:
-    """Remove surrogate codepoints (U+D800..U+DFFF) from `text`.
-
-    Reasoning models occasionally emit these mid-response. UTF-8 forbids
-    them, so any `sys.stdout.write()` would otherwise raise
-    UnicodeEncodeError. Returning a clean string is safer than `errors=
-    "replace"` (which gives �) — the user sees the real text.
-    """
-    if not text:
-        return text
-    return _SURROGATE_RE.sub("", text)
+# Re-export the shared sanitizer as `_strip_surrogates` for back-compat
+# with the many call sites already in this file. New code should use
+# `starry_code.text.sanitize.strip_surrogates` directly.
+from starry_code.text.sanitize import strip_surrogates as _strip_surrogates
 
 from starry_code.config import Settings
 from starry_code.session import Session, SessionStore

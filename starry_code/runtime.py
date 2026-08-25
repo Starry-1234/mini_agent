@@ -228,8 +228,8 @@ def run_turn(
     # strictly forbids. .encode("utf-8") inside the embedder (and any
     # other sink downstream) would otherwise crash. Stripping here makes
     # every downstream path safe.
-    import re as _re_user
-    user_input = _re_user.sub(r"[\ud800-\udfff]", "", user_input)
+    from .text.sanitize import strip_surrogates
+    user_input = strip_surrogates(user_input)
 
     # 1) Push to short-term memory.
     memory.push_turn(session.id, {"role": "user", "content": user_input})

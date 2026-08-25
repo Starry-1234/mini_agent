@@ -7,6 +7,7 @@ from pathlib import Path
 from .llm import LLMClient
 from .prompts import NAMING_PROMPT
 from .session import Session
+from .text.sanitize import strip_surrogates
 from .trace import TraceLogger
 
 # 2-16 chars of CJK ideographs, ASCII letters, digits, underscore, hyphen.
@@ -14,13 +15,13 @@ _NAME_RE = re.compile(r"^[一-鿿豈-﫿A-Za-z0-9_-]{2,16}$")
 # Characters we are willing to strip from the edges (quotes, punctuation, ws).
 _STRIP_CHARS = " \t\r\n\"'“”「」『』`。，、.,:：;；!！?？()（）[]【】{}"
 # Lone surrogates (U+D800..U+DFFF) are emitted by some reasoning models and
-# crash UTF-8 encoding downstream. Strip them before any further processing.
-_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+# crash UTF-8 encoding downstream. Use the shared sanitizer in
+# .text.sanitize so the regex is single-sourced across the project.
 
 
 def _sanitize(text: str) -> str:
     """Drop lone surrogate code points that can't be UTF-8 encoded."""
-    return _SURROGATE_RE.sub("", text)
+    return strip_surrogates(text)
 
 
 def generate_chinese_name(llm: LLMClient, first_user_msg: str) -> str | None:
