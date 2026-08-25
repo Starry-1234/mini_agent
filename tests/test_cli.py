@@ -8,9 +8,41 @@ def test_cli_help_runs(tmp_path: Path):
     env = os.environ.copy()
     env["LLM_API_KEY"] = ""
     env["SESSIONS_DIR"] = str(tmp_path)
-    r = subprocess.run([sys.executable, "cli.py", "--help"], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, "cli.py", "--help"],
+                       capture_output=True, text=True, env=env,
+                       encoding="utf-8", errors="replace")
     assert r.returncode == 0
     assert "session" in r.stdout.lower()
+
+
+def test_cli_mock_does_not_call_embedding_api(tmp_path: Path):
+    """Regression (Bug F): --mock should mock chat AND embeddings.
+
+    Before the fix, .env with valid EMBED_* settings would still drive
+    build_memory() to use OpenAICompatEmbedder, hitting the real API
+    with 401 even under --mock. Now --mock forces empty embed
+    settings so MockEmbedder is used.
+    """
+    # Set fake embed creds — if --mock fails to neutralize them, the
+    # embedder call will fail with a network error.
+    env = os.environ.copy()
+    env["LLM_API_KEY"] = "fake-key-mock"
+    env["EMBED_API_KEY"] = "fake-embed-key-mock"
+    env["EMBED_BASE_URL"] = "http://127.0.0.1:1"  # unreachable, intentional
+    env["EMBED_MODEL"] = "fake-embed-model"
+    env["SESSIONS_DIR"] = str(tmp_path)
+    # Force UTF-8 subprocess pipes (Windows defaults to GBK)
+    env["PYTHONIOENCODING"] = "utf-8"
+    r = subprocess.run(
+        [sys.executable, "cli.py", "--mock", "--once", "ping"],
+        capture_output=True, text=True, env=env, timeout=30,
+        encoding="utf-8", errors="replace",
+    )
+    # If --mock works correctly: exit 0, output contains "(mock)" reply
+    assert r.returncode == 0, f"unexpected exit: rc={r.returncode}\nstderr={r.stderr!r}\nstdout={r.stdout!r}"
+    assert r.stdout is not None and "(mock)" in r.stdout
+    # Crucial: no 401 from the fake embed URL
+    assert r.stderr is None or "401" not in r.stderr
 
 
 # ---------------------------------------------------------------------------

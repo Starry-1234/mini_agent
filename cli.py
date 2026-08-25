@@ -302,6 +302,26 @@ def main() -> int:
             llm = make_default_mock_llm(args.once)
         else:
             llm = MockLLMClient()
+        # Bug F: --mock should mock BOTH chat and embeddings. If .env has
+        # EMBED_* set, build_memory() will still try real embedding API
+        # (and fail with 401). Force embed settings to empty so MockEmbedder
+        # is used.
+        settings = Settings(
+            llm_base_url=settings.llm_base_url,
+            llm_api_key=settings.llm_api_key,
+            llm_model=settings.llm_model,
+            embed_base_url="",
+            embed_api_key="",
+            embed_model="",
+            short_term_backend=settings.short_term_backend,
+            vector_backend=settings.vector_backend,
+            redis_url=settings.redis_url,
+            qdrant_url=settings.qdrant_url,
+            max_tool_iters=settings.max_tool_iters,
+            context_max_messages=settings.context_max_messages,
+            recent_keep=settings.recent_keep,
+            sessions_dir=settings.sessions_dir,
+        )
     else:
         if not settings.llm_api_key:
             print("error: LLM_API_KEY is required (or pass --mock)", file=sys.stderr)
