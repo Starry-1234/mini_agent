@@ -5,3 +5,5 @@ pytest>=8.0
 redis>=5.0
 qdrant-client>=1.7
 chromadb>=0.4
+# Web UI (Phase 3 W4a — optional; CLI works without it)
+streamlit>=1.30
