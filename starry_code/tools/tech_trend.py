@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Protocol
 from .base import Tool, ToolResult
+from .tech_trend_sources import CompositeTrendProvider
 
 
 class TrendProvider(Protocol):
@@ -82,8 +83,9 @@ class TechTrendTool(Tool):
     教练在做「该不该学 X」的判断时**必须**调用此工具，而不是凭印象回答。
     """
 
-    # 默认 provider；可在 build_default_registry() 里替换为真实数据源
-    _provider: TrendProvider = _MockTrendProvider()
+    # 默认 provider：CompositeTrendProvider (3 数据源加权聚合)
+    # 通过 set_provider() 可替换为旧 Mock 或自定义实现。
+    _provider: TrendProvider = CompositeTrendProvider()
 
     @classmethod
     def set_provider(cls, provider: TrendProvider) -> None:

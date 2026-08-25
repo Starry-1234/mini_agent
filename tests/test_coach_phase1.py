@@ -107,7 +107,9 @@ def test_tech_trend_known_topic_returns_rising_or_stable():
         data = json.loads(r.content)
         assert data["found"] is True
         assert data["direction"] in ("rising", "stable", "falling")
-        assert isinstance(data["demand_score"], int)
+        # W1b: composite returns weighted-average float (was int in the
+        # old mock). Accept either form for back-compat.
+        assert isinstance(data["demand_score"], (int, float))
         assert 0 <= data["demand_score"] <= 10
 
 
