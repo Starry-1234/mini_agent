@@ -16,6 +16,7 @@ from .tools.read_artifact import ReadArtifactTool
 from .tools.update_plan import UpdatePlanTool
 from .tools.skill_assess import SkillAssessTool
 from .tools.project_drive import ProjectDriveTool
+from .tools.interview_prep import InterviewPrepTool
 from .memory.embeddings import MockEmbedder
 from .memory.manager import MemoryManager
 from .memory.short_term import InMemoryShortTermStore, RedisShortTermStore
@@ -71,6 +72,9 @@ def build_default_registry() -> ToolRegistry:
     Phase 3 (W2) additions:
     - skill_assess: structured gap analysis between learner and target role
     - project_drive: project skeleton + milestones from goal + time budget
+
+    Phase 3 (W4b) additions:
+    - interview_prep: role+level specific interview questions
     """
     reg = ToolRegistry()
     reg.register_all([
@@ -83,6 +87,7 @@ def build_default_registry() -> ToolRegistry:
         ReadArtifactTool(),
         SkillAssessTool(),
         ProjectDriveTool(),
+        InterviewPrepTool(),
     ])
     return reg
 
@@ -293,6 +298,16 @@ def run_turn(
                     session.id,
                     {"role": "tool", "name": call.name, "content": result.content},
                 )
+                # W3b: summary drift fix. If update_plan succeeded, the
+                # old summary (if any) describes a stale plan. Clear it
+                # so the next ContextBuilder.build() regenerates from
+                # current history — which now contains the update_plan
+                # call itself.
+                if call.name == "update_plan" and result.ok:
+                    if session.summary:
+                        session.summary = ""
+                        trace.event("summary_invalidated",
+                                    reason="plan updated")
             iters += 1
             continue
 

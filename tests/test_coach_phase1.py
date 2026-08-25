@@ -181,10 +181,11 @@ def test_mock_pipeline_includes_coach_prompt():
         s = Settings(sessions_dir=Path(td))
         reg = build_default_registry()
         # Phase 2 added 2: update_plan, read_artifact → 7
-        # Phase 3 (W2) added 2 more: skill_assess, project_drive → 9 total
+        # Phase 3 (W2) added 2 more: skill_assess, project_drive → 9
+        # Phase 3 (W4b) added interview_prep → 10 total
         # (calculator, search, todo, weather, tech_trend, update_plan,
-        #  read_artifact, skill_assess, project_drive)
-        assert len(reg.names()) == 9
+        #  read_artifact, skill_assess, project_drive, interview_prep)
+        assert len(reg.names()) == 10
         # memory 可以正常装配（mock embedder）
         mem = build_memory(settings=s, llm=None)
         assert mem is not None
