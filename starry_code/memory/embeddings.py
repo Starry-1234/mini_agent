@@ -33,7 +33,13 @@ class MockEmbedder:
 
 class OpenAICompatEmbedder:
     def __init__(self, api_key: str, base_url: str, model: str) -> None:
-        self.api_key, self.base_url, self.model = model, base_url, api_key
+        # Bug H fix: previously the assignment order was
+        # `self.api_key, self.base_url, self.model = model, base_url, api_key`
+        # which sent the model name as the API key (and the key as the
+        # model name) to the embedding API, returning 401 invalid_api_key.
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         # Sanitize before sending to embedding API: some providers reject
