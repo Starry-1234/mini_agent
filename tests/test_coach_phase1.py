@@ -42,6 +42,42 @@ def test_naming_prompt_has_learning_bias():
         assert kw in NAMING_PROMPT, f"NAMING_PROMPT missing scenario: {kw}"
 
 
+# ---- W1c: few-shot examples in SYSTEM_PROMPT ----
+
+def test_system_prompt_has_few_shot_examples():
+    """W1c: SYSTEM_PROMPT contains positive/negative examples showing
+    correct vs wrong behavior. Without these, reasoning models sometimes
+    bypass the hard rules."""
+    assert "正反示例" in SYSTEM_PROMPT, (
+        "SYSTEM_PROMPT missing few-shot examples section"
+    )
+    # The example counter should appear (we shipped 6 pairs)
+    assert "示例 6" in SYSTEM_PROMPT
+
+
+def test_system_prompt_examples_cover_key_behaviors():
+    """The 6 example pairs should cover the most common failure modes."""
+    expected_topics = [
+        "怎么学",         # 例 1: 不要给百科大纲
+        "行情",         # 例 2: 必须调 tech_trend
+        "update_plan",   # 例 3: 必须调工具改 plan_cache
+        "下一步",         # 例 4: 只给 1 件事
+        "转",            # 例 5: 不替用户决定
+        "大厂",          # 例 6: 不瞎给方案
+    ]
+    for topic in expected_topics:
+        assert topic in SYSTEM_PROMPT, (
+            f"SYSTEM_PROMPT few-shot missing topic: {topic}"
+        )
+
+
+def test_system_prompt_examples_have_correct_and_wrong_markers():
+    """Each few-shot pair must explicitly mark 错/对 so the LLM sees the
+    contrast."""
+    assert "❌ 错" in SYSTEM_PROMPT
+    assert "✅ 对" in SYSTEM_PROMPT
+
+
 # ---- B: tech_trend registration ----
 
 def test_tech_trend_registered_in_default_registry():
