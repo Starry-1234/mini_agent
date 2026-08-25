@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import atexit
+import json
 import os
 import secrets
 import sys
@@ -137,6 +138,119 @@ def render_repl_startup(session: "Session", stream=None) -> None:
         out.write("\n")
 
 
+def _handle_slash_command(cmd: str, session: "Session", store: SessionStore,
+                          memory: MemoryManager, trace: TraceLogger) -> None:
+    """W3a: implement in-REPL slash commands.
+
+    All commands start with "/". They are pure local operations (no LLM
+    call) so they're fast and don't pollute the conversation history.
+    """
+    parts = cmd[1:].split(maxsplit=1)
+    name = parts[0].lower() if parts else ""
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if name == "help":
+        print(
+            "Slash commands:\n"
+            "  /history [query]    list or search prior sessions (most recent first)\n"
+            "  /plan               show current plan_cache\n"
+            "  /forget <topic|all> clear plan_cache fields or wipe session memory\n"
+            "  /help               this list\n"
+            "Anything else is sent to the LLM as a normal message."
+        )
+        return
+
+    if name == "plan":
+        pc = session.plan_cache
+        print(
+            f"Plan (v{pc.get('version', 0)}):\n"
+            f"  stage        : {pc.get('stage', '')}\n"
+            f"  next_task    : {pc.get('next_task', '')}\n"
+            f"  long_term_goal: {pc.get('long_term_goal', '')}\n"
+            f"  last_updated : {pc.get('last_updated', '')}"
+        )
+        return
+
+    if name == "history":
+        # List sessions in sessions_dir, filtered by optional query
+        sessions_dir = Path(store.base) if hasattr(store, "base") else settings.sessions_dir
+        if not sessions_dir.exists():
+            print("(no sessions dir)")
+            return
+        rows = []
+        for p in sorted(sessions_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                msgs = len(d.get("messages", []))
+                title = p.stem
+                # Filter only against title + plan_cache fields, NOT
+                # the whole JSON (which includes the 5K-char coach
+                # prompt and would match everything).
+                plan_text = " ".join(str(v) for v in
+                                    d.get("plan_cache", {}).values())
+                search_blob = (title + " " + plan_text).lower()
+                if arg and arg.lower() not in search_blob:
+                    continue
+                rows.append((title, msgs, p.stat().st_mtime))
+            except Exception:
+                continue
+        if not rows:
+            print("(no sessions match)" if arg else "(no sessions)")
+            return
+        print(f"{'session':40s}  msgs  last used")
+        print("-" * 60)
+        for title, msgs, mt in rows[:15]:
+            ago = int((datetime.now().timestamp() - mt) / 60)
+            if ago < 60:
+                ago_str = f"{ago}m"
+            elif ago < 1440:
+                ago_str = f"{ago // 60}h"
+            else:
+                ago_str = f"{ago // 1440}d"
+            print(f"{title:40s}  {msgs:4d}  {ago_str}")
+        if len(rows) > 15:
+            print(f"... ({len(rows) - 15} more)")
+        return
+
+    if name == "forget":
+        # /forget all            -> clear plan_cache to empty
+        # /forget goal           -> clear long_term_goal
+        # /forget stage          -> clear stage
+        # /forget next_task      -> clear next_task
+        if not arg:
+            print("usage: /forget <stage|next_task|goal|all>")
+            return
+        arg_l = arg.lower()
+        pc = session.plan_cache
+        if arg_l == "all":
+            # Reset values but keep keys (schema-stable for downstream code).
+            for k in ("stage", "next_task", "long_term_goal",
+                      "last_updated"):
+                pc[k] = ""
+            pc["version"] = 0
+            store.save(session)
+            print("plan_cache cleared")
+            return
+        # Map friendly names to actual keys
+        key_map = {"stage": "stage", "next_task": "next_task",
+                   "next": "next_task", "goal": "long_term_goal",
+                   "long_term_goal": "long_term_goal"}
+        key = key_map.get(arg_l)
+        if key is None or key not in pc:
+            print(f"unknown target: {arg!r} (try stage / next_task / goal / all)")
+            return
+        if not pc[key]:
+            print(f"{key} already empty")
+            return
+        pc[key] = ""
+        # version unchanged — explicit clear, not a real change
+        store.save(session)
+        print(f"cleared {key}")
+        return
+
+    print(f"unknown command: /{name} (try /help)")
+
+
 def _cleanup_empty_auto_session(trace: TraceLogger, session: "Session", sessions_dir: Path) -> None:
     """Delete the trace file if the auto-id session was never written to.
 
@@ -257,12 +371,27 @@ def main() -> int:
             continue
         if s in ("exit", "quit"):
             return 0
+        # ----- W3a: CLI experience slash commands -----
+        # /history [query]   list or search prior sessions
+        # /forget <topic|all> clear plan_cache fields or full session memory
+        # /plan              show current plan_cache
+        # /help              list available slash commands
+        if s.startswith("/"):
+            _handle_slash_command(s, session, store, memory, trace)
+            continue
         try:
             ans = ask(s)
             # Strip surrogates before printing — reasoning models (MiniMax-M3,
             # DeepSeek-R1) sometimes emit U+D800..U+DFFF which UTF-8 rejects
             # with UnicodeEncodeError. See _strip_surrogates() for context.
             print(_strip_surrogates(ans))
+            # W3a: keep the window title in sync with plan_cache.stage
+            # so the user always sees the current focus.
+            stage = session.plan_cache.get("stage", "")
+            if stage:
+                _set_terminal_title(f"✦ {stage}")
+            elif not session.id.startswith("auto-"):
+                _set_terminal_title(f"✦ {session.id}")
         except Exception as e:  # noqa: BLE001
             trace.event("error", message=str(e))
             print(f"[error] {e}", file=sys.stderr)
