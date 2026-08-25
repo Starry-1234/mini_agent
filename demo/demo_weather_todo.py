@@ -47,7 +47,7 @@ def main() -> int:
         llm = LLMClient(api_key=settings.llm_api_key, base_url=settings.llm_base_url, model=settings.llm_model)
 
     session = Session(id=args.session)
-    registry = build_default_registry()
+    registry = build_default_registry(sessions_dir=Path(args.sessions))
     memory = build_memory(settings=settings, llm=llm)
     trace = TraceLogger(Path(args.sessions), args.session)
 

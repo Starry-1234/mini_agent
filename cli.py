@@ -337,7 +337,7 @@ def main() -> int:
 
     store = SessionStore(settings.sessions_dir)
     session = store.load(session_id)
-    registry = build_default_registry()
+    registry = build_default_registry(sessions_dir=settings.sessions_dir)
     memory = build_memory(settings=settings, llm=llm)
     trace = TraceLogger(settings.sessions_dir, session_id)
 

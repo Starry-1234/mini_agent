@@ -60,7 +60,7 @@ def _should_extract(user_text: str, answer_text: str) -> bool:
     return content_len >= _MIN_EXTRACT_CHARS
 
 
-def build_default_registry() -> ToolRegistry:
+def build_default_registry(sessions_dir: Path | None = None) -> ToolRegistry:
     """Register the built-in tools:
     calculator, search, todo, weather, tech_trend, update_plan, read_artifact,
     skill_assess, project_drive.
@@ -75,6 +75,9 @@ def build_default_registry() -> ToolRegistry:
 
     Phase 3 (W4b) additions:
     - interview_prep: role+level specific interview questions
+
+    `sessions_dir` is passed to ReadArtifactTool so it validates against
+    the SAME directory ContextBuilder writes artifacts to (Bug G fix).
     """
     reg = ToolRegistry()
     reg.register_all([
@@ -84,7 +87,7 @@ def build_default_registry() -> ToolRegistry:
         WeatherTool(),
         TechTrendTool(),
         UpdatePlanTool(),
-        ReadArtifactTool(),
+        ReadArtifactTool(sessions_dir=sessions_dir),
         SkillAssessTool(),
         ProjectDriveTool(),
         InterviewPrepTool(),

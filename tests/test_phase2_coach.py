@@ -284,3 +284,53 @@ def test_build_default_registry_includes_phase2_tools():
     art_schema = next(s for s in schemas if s["function"]["name"] == "read_artifact")
     assert "stage" in plan_schema["function"]["parameters"]["properties"]
     assert "path" in art_schema["function"]["parameters"]["required"]
+
+
+# ---- Bug G regression: read_artifact must use the SAME sessions_dir
+# that ContextBuilder writes to ----
+
+def test_read_artifact_uses_custom_sessions_dir(tmp_path):
+    """When build_default_registry gets a custom sessions_dir, both
+    the offload path (ContextBuilder) and the read path (ReadArtifactTool)
+    must agree. Otherwise the coach calls read_artifact on an artifact
+    that exists but is in a different directory — silently fails.
+    """
+    from starry_code.context import ContextBuilder
+    from starry_code.session import Session
+    from starry_code.memory.embeddings import MockEmbedder
+    from starry_code.memory.short_term import InMemoryShortTermStore
+    from starry_code.memory.vector_store import LocalVectorStore
+    from starry_code.memory.manager import MemoryManager
+
+    sessions_dir = tmp_path / "custom-sessions"
+    reg = build_default_registry(sessions_dir=sessions_dir)
+
+    # Setup session + history with a tool message > 500 chars (triggers offload)
+    s = Session(id="bug-g")
+    s.add_user("compute")
+    s.add_tool_call(call_id="abc123", name="calculator", args={"expression": "2+2"})
+    s.add_tool_result(call_id="abc123", name="calculator", content="x" * 1000)
+    s.add_assistant("answer")
+
+    # ContextBuilder writes artifacts to {sessions_dir}/bug-g/artifacts/
+    memory = MemoryManager(
+        embedder=MockEmbedder(),
+        short_term=InMemoryShortTermStore(),
+        vector_store=LocalVectorStore(embedder=MockEmbedder(), path=None),
+    )
+    builder = ContextBuilder(memory=memory, settings=Settings(sessions_dir=sessions_dir))
+    built = builder.build(s, "next question")
+    msgs = built.messages
+    # Find the [artifact saved] card
+    artifact_card = next(m for m in msgs if "[artifact saved]" in (m.get("content") or ""))
+    card_text = artifact_card["content"]
+    # Extract the path
+    import re
+    path_match = re.search(r"path: (.+\.json)", card_text)
+    assert path_match, f"could not find path in card: {card_text[:200]}"
+    actual_path = path_match.group(1)
+
+    # Now read_artifact on that path. With the Bug G fix it should succeed.
+    read_tool = reg.get("read_artifact")
+    r = read_tool.execute({"path": actual_path}, session=s)
+    assert r.ok, f"read_artifact rejected its own artifact: {r.content}"
