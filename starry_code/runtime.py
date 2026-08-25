@@ -14,6 +14,8 @@ from .tools.todo import TodoTool
 from .tools.weather import WeatherTool
 from .tools.read_artifact import ReadArtifactTool
 from .tools.update_plan import UpdatePlanTool
+from .tools.skill_assess import SkillAssessTool
+from .tools.project_drive import ProjectDriveTool
 from .memory.embeddings import MockEmbedder
 from .memory.manager import MemoryManager
 from .memory.short_term import InMemoryShortTermStore, RedisShortTermStore
@@ -59,11 +61,16 @@ def _should_extract(user_text: str, answer_text: str) -> bool:
 
 def build_default_registry() -> ToolRegistry:
     """Register the built-in tools:
-    calculator, search, todo, weather, tech_trend, update_plan, read_artifact.
+    calculator, search, todo, weather, tech_trend, update_plan, read_artifact,
+    skill_assess, project_drive.
 
     Phase 2 additions:
     - update_plan: coach's only sanctioned way to mutate plan_cache
     - read_artifact: lets the coach pull back full offloaded tool output
+
+    Phase 3 (W2) additions:
+    - skill_assess: structured gap analysis between learner and target role
+    - project_drive: project skeleton + milestones from goal + time budget
     """
     reg = ToolRegistry()
     reg.register_all([
@@ -74,6 +81,8 @@ def build_default_registry() -> ToolRegistry:
         TechTrendTool(),
         UpdatePlanTool(),
         ReadArtifactTool(),
+        SkillAssessTool(),
+        ProjectDriveTool(),
     ])
     return reg
 
