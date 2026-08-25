@@ -11,7 +11,9 @@ def test_defaults(tmp_path, monkeypatch):
     assert s.llm_api_key == ""
     assert s.short_term_backend == "memory"
     assert s.vector_backend == "local"
-    assert s.max_tool_iters == 8
+    # W2d: max_tool_iters bumped from 8 to 12 to accommodate learning
+    # planning flows (search → tech_trend*N → read_artifact → update_plan).
+    assert s.max_tool_iters == 12
     assert s.context_max_messages == 20
     assert s.recent_keep == 8
     assert s.sessions_dir == tmp_path

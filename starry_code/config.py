@@ -32,7 +32,11 @@ class Settings:
     vector_backend: str = "local"
     redis_url: str = ""
     qdrant_url: str = ""
-    max_tool_iters: int = 8
+    # W2d: max_tool_iters 8 → 12. Learning-planning flows can chain
+    # search → tech_trend (multiple topics) → read_artifact → update_plan,
+    # which is more than the old 8-step budget. Override via
+    # MAX_TOOL_ITERS env var.
+    max_tool_iters: int = 12
     context_max_messages: int = 20
     recent_keep: int = 8
     sessions_dir: Path = field(default_factory=lambda: Path("sessions"))
@@ -57,7 +61,7 @@ class Settings:
             vector_backend=get("VECTOR_BACKEND", "local"),
             redis_url=get("REDIS_URL"),
             qdrant_url=get("QDRANT_URL"),
-            max_tool_iters=getint("MAX_TOOL_ITERS", 8),
+            max_tool_iters=getint("MAX_TOOL_ITERS", 12),
             context_max_messages=getint("CONTEXT_MAX_MESSAGES", 20),
             recent_keep=getint("RECENT_KEEP", 8),
             sessions_dir=sessions_dir or Path(get("SESSIONS_DIR", "sessions")),
