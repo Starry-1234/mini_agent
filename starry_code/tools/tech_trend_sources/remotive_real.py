@@ -27,8 +27,14 @@ def _parse_date(s: str | None) -> datetime | None:
     if not s:
         return None
     try:
-        # Remotive uses ISO 8601, e.g. "2026-08-22T10:00:00+00:00"
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        # Remotive's `publication_date` is ISO 8601 but **without** a
+        # timezone suffix (naive datetime, e.g. "2026-08-21T05:54:39").
+        # We treat naive values as UTC. If they include "Z" or "+HH:MM",
+        # fromisoformat handles them natively.
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, TypeError):
         return None
 
