@@ -62,6 +62,28 @@ class Session:
             }],
         })
 
+    def add_parallel_tool_calls(self, calls: list[tuple[str, str, dict]]) -> None:
+        """Record multiple parallel tool calls in ONE assistant message.
+
+        Bug J fix: previously add_tool_call was called once per iteration
+        (with only the first tool's id), but tool_results were added for
+        every tool. Result: orphan tool_results without a matching
+        tool_call in the assistant message → LLM rejects with 400
+        "tool call result does not follow tool call".
+
+        All parallel calls must go into a single assistant message so
+        every tool_call_id in the subsequent tool_results has a match.
+        """
+        self.messages.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": call_id,
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+            } for call_id, name, args in calls],
+        })
+
     def add_tool_result(self, *, call_id: str, name: str, content: str) -> None:
         self.messages.append({
             "role": "tool",

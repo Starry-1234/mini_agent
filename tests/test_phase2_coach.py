@@ -289,6 +289,34 @@ def test_build_default_registry_includes_phase2_tools():
 # ---- Bug G regression: read_artifact must use the SAME sessions_dir
 # that ContextBuilder writes to ----
 
+# ---- Bug J regression: parallel tool_calls must all go into ONE
+# assistant message; otherwise the second tool_result orphans ----
+
+def test_add_parallel_tool_calls_records_all_in_one_message(tmp_path):
+    """When the LLM fires multiple tool calls in parallel, session.add_parallel_tool_calls
+    must put ALL of them in a single assistant message so the subsequent
+    tool_results can pair with their tool_call_ids."""
+    s = Session(id="bug-j")
+    s.add_user("parallel please")
+    s.add_parallel_tool_calls([
+        ("call_1", "tech_trend", {"topic": "rust"}),
+        ("call_2", "skill_assess", {"target_role": "Go 后端"}),
+    ])
+    s.add_tool_result(call_id="call_1", name="tech_trend", content="<data1>")
+    s.add_tool_result(call_id="call_2", name="skill_assess", content="<data2>")
+    # One assistant message with BOTH tool_calls
+    asst = [m for m in s.messages if m["role"] == "assistant"]
+    assert len(asst) == 1
+    assert len(asst[0]["tool_calls"]) == 2
+    ids = {tc["id"] for tc in asst[0]["tool_calls"]}
+    assert ids == {"call_1", "call_2"}
+    # Two tool results, each with matching id
+    tools = [m for m in s.messages if m["role"] == "tool"]
+    assert len(tools) == 2
+    tool_ids = {t["tool_call_id"] for t in tools}
+    assert tool_ids == {"call_1", "call_2"}
+
+
 # ---- Bug I regression: offload must keep role="tool" so the
 # assistant-tool_call ↔ tool_result pairing survives ----
 

@@ -275,14 +275,16 @@ def run_turn(
             trace.event("thought", text=parsed.thought)
 
         if parsed.tool_calls:
-            # Record ONE assistant tool-call turn with the FIRST call_id
-            # as the group anchor (matches brief: first call id reused).
-            anchor = parsed.tool_calls[0]
-            session.add_tool_call(
-                call_id=anchor.id,
-                name=anchor.name,
-                args=anchor.args,
-            )
+            # Bug J fix: when the LLM fires multiple tool calls in one
+            # turn (parallel), we must record ALL of them in a single
+            # assistant message. Otherwise the tool_results we send
+            # back orphan (no matching tool_call) and the LLM API
+            # rejects with 400 "tool call result does not follow tool
+            # call".
+            session.add_parallel_tool_calls([
+                (call.id, call.name, call.args)
+                for call in parsed.tool_calls
+            ])
             for call in parsed.tool_calls:
                 trace.event("tool_call", name=call.name, args=call.args)
                 result: ToolResult = registry.execute(call.name, call.args, session)
