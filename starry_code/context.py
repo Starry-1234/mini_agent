@@ -111,6 +111,13 @@ class ContextBuilder:
         sessions/{sid}/artifacts/{call_id}.json and replace with a short
         summary card.
 
+        **Bug I fix**: previously the offload replaced the message role
+        from "tool" to "system", which broke the
+        assistant-tool_call → tool_result pairing that the LLM API
+        requires. The LLM would reject with 400 "tool call result does
+        not follow tool call". Fix: keep role="tool" and only replace
+        the content with the artifact card. The tool_call_id stays intact.
+
         Side effect: writes artifact files to disk. Does NOT modify
         `session.messages` — the replacement is local to this call.
         """
@@ -138,8 +145,13 @@ class ContextBuilder:
                 head = content[:100].replace("\n", " ")
                 tail = content[-100:].replace("\n", " ") if len(content) > 200 else ""
                 summary = content[:200].replace("\n", " ")
+                # CRITICAL: keep role="tool" so tool_call_id pairing
+                # with the assistant's tool_call is preserved. Replace
+                # only the content with a short artifact card.
                 out.append({
-                    "role": "system",
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": tool_name,
                     "content": self._ARTIFACT_CARD_TEMPLATE.format(
                         path=str(artifact_path),
                         tool=tool_name,

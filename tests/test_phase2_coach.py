@@ -289,6 +289,54 @@ def test_build_default_registry_includes_phase2_tools():
 # ---- Bug G regression: read_artifact must use the SAME sessions_dir
 # that ContextBuilder writes to ----
 
+# ---- Bug I regression: offload must keep role="tool" so the
+# assistant-tool_call ↔ tool_result pairing survives ----
+
+def test_offload_keeps_tool_role(tmp_path):
+    """Bug I: previously offload replaced role="tool" with role="system",
+    breaking the assistant-tool_call ↔ tool_result pairing. The LLM API
+    rejects with 400 "tool call result does not follow tool call".
+    Fix: keep role="tool" and only replace content.
+    """
+    from starry_code.context import ContextBuilder
+    from starry_code.session import Session
+    from starry_code.config import Settings
+    from starry_code.memory.embeddings import MockEmbedder
+    from starry_code.memory.short_term import InMemoryShortTermStore
+    from starry_code.memory.vector_store import LocalVectorStore
+    from starry_code.memory.manager import MemoryManager
+
+    s = Session(id="bug-i")
+    s.add_user("compute")
+    s.add_tool_call(call_id="abc", name="calculator", args={"expression": "2+2"})
+    s.add_tool_result(call_id="abc", name="calculator", content="x" * 1000)
+    s.add_assistant("ok")
+
+    memory = MemoryManager(
+        embedder=MockEmbedder(),
+        short_term=InMemoryShortTermStore(),
+        vector_store=LocalVectorStore(embedder=MockEmbedder(), path=None),
+    )
+    builder = ContextBuilder(memory=memory, settings=Settings(sessions_dir=tmp_path))
+    built = builder.build(s, "next")
+    msgs = built.messages
+
+    # Find the offloaded tool message (originally >500 chars content)
+    tool_msgs = [m for m in msgs if m.get("role") == "tool"]
+    assert tool_msgs, "no tool messages after build (offload may have replaced)"
+
+    # Find the offloaded one — content should contain "[artifact saved]"
+    offloaded = [m for m in tool_msgs if "[artifact saved]" in (m.get("content") or "")]
+    assert offloaded, "offloaded tool message not found"
+
+    # The offloaded message MUST keep role="tool" + tool_call_id unchanged
+    m = offloaded[0]
+    assert m["role"] == "tool", f"Bug I regression: role changed to {m['role']!r}"
+    assert m["tool_call_id"] == "abc", (
+        f"tool_call_id changed: {m['tool_call_id']!r}"
+    )
+
+
 def test_read_artifact_uses_custom_sessions_dir(tmp_path):
     """When build_default_registry gets a custom sessions_dir, both
     the offload path (ContextBuilder) and the read path (ReadArtifactTool)
