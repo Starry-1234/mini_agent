@@ -7,3 +7,6 @@ qdrant-client>=1.7
 chromadb>=0.4
 # Web UI (Phase 3 W4a — optional; CLI works without it)
 streamlit>=1.30
+# R1: real tech-trend data sources (GitHub/Remotive/HN Algolia)
+# Only required when TREND_PROVIDER=real. Mock provider is default.
+httpx>=0.27

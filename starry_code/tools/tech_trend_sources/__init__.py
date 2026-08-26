@@ -20,6 +20,9 @@ from .composite import CompositeTrendProvider, SourceResult
 from .github_trending import GitHubTrendingProvider
 from .remotive import RemotiveJobsProvider
 from .hn_algolia import HNAlgoliaProvider
+from .github_trending_real import RealGitHubTrendingProvider
+from .remotive_real import RealRemotiveJobsProvider
+from .hn_algolia_real import RealHNAlgoliaProvider
 
 __all__ = [
     "BaselineTable",
@@ -28,4 +31,7 @@ __all__ = [
     "GitHubTrendingProvider",
     "RemotiveJobsProvider",
     "HNAlgoliaProvider",
+    "RealGitHubTrendingProvider",
+    "RealRemotiveJobsProvider",
+    "RealHNAlgoliaProvider",
 ]

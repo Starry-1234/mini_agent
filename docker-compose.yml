@@ -9,6 +9,11 @@ services:
       # Inside compose, prefer compose-network hostnames (e.g. qdrant) over
       # whatever public URLs the .env file holds. Override as needed.
       SESSIONS_DIR: /app/sessions
+      # R1a: enable Redis-backed short-term memory. The Redis service
+      # is defined below (uncommented as of R1). Fallback to in-memory
+      # if Redis is unreachable (handled in runtime.build_memory).
+      SHORT_TERM_BACKEND: ${SHORT_TERM_BACKEND:-redis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # When using the bundled qdrant service below, set:
       # VECTOR_BACKEND: qdrant
       # QDRANT_URL: http://qdrant:6333
@@ -62,13 +67,22 @@ services:
   #     - qdrant_data:/qdrant/storage
   #   restart: unless-stopped
 
-  # Optional bundled short-term store. Uncomment to use, then update .env:
-  #   SHORT_TERM_BACKEND=redis
-  #   REDIS_URL=redis://redis:6379/0
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: starry-code-redis
-  #   restart: unless-stopped
+  # R1a: Redis service for ShortTermStore. Sessions land here with
+  # 24h TTL; Redis down → runtime falls back to in-memory.
+  redis:
+    image: redis:7-alpine
+    container_name: starry-code-redis
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
-# volumes:
-#   qdrant_data:
+volumes:
+  redis_data:

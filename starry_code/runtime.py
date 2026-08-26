@@ -189,9 +189,22 @@ def build_memory(settings: Settings, llm: LLMClient | None) -> MemoryManager:
     else:
         embedder = MockEmbedder()
 
-    # Short-term backend
+    # Short-term backend. R1a: redis has try/except fallback so a
+    # misconfigured/missing Redis URL doesn't kill the REPL — we
+    # degrade to in-memory and emit a one-shot stderr warning. Better
+    # UX than crashing the whole turn because Redis is down.
     if settings.short_term_backend == "redis":
-        short_term = RedisShortTermStore(url=settings.redis_url)
+        try:
+            short_term = RedisShortTermStore(url=settings.redis_url)
+            if not short_term.ping():
+                raise RuntimeError("PING failed")
+        except Exception as e:  # noqa: BLE001
+            import sys as _sys
+            _sys.stderr.write(
+                f"[starry] redis unreachable ({e!r}); falling back to in-memory\n"
+            )
+            _sys.stderr.flush()
+            short_term = InMemoryShortTermStore()
     else:
         short_term = InMemoryShortTermStore()
 

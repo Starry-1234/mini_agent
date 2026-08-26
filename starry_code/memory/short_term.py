@@ -8,6 +8,10 @@ class ShortTermStore(Protocol):
     def push(self, sid: str, record: dict) -> None: ...
     def recent(self, sid: str, k: int) -> list[dict]: ...
     def clear(self, sid: str) -> None: ...
+    def ping(self) -> bool:
+        """Optional: cheap health check (returns True if backend reachable).
+        Default impl returns True (in-memory is always available)."""
+        return True
 
 
 class InMemoryShortTermStore:
@@ -25,6 +29,8 @@ class InMemoryShortTermStore:
 
     def clear(self, sid: str) -> None:
         self._buf.pop(sid, None)
+
+    # ping() inherits from Protocol default (True) — no override needed.
 
 
 class RedisShortTermStore:
@@ -56,3 +62,12 @@ class RedisShortTermStore:
 
     def clear(self, sid: str) -> None:
         self._r.delete(self._key(sid))
+
+    def ping(self) -> bool:
+        """R1a: cheap health check used by runtime.build_memory for
+        fallback decisions. Issues a Redis PING; returns False on
+        ConnectionError so the runtime can degrade gracefully."""
+        try:
+            return bool(self._r.ping())
+        except Exception:  # noqa: BLE001 — any failure means unreachable
+            return False
