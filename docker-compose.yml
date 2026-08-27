@@ -1,8 +1,16 @@
+name: starry-code   # Project name for `docker compose` grouping
+                          # All starry-code containers (agent, redis, qdrant)
+                          # appear under this project. Independent of
+                          # any other compose project on this host.
+
 services:
   agent:
     build: .
     image: starry-code:local
-    container_name: starry-code
+    container_name: starry-code-agent
+    labels:
+      - "com.starry-code.service=agent"
+      - "com.starry-code.project=starry-code"
     env_file:
       - .env
     environment:
@@ -72,6 +80,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: starry-code-redis
+    labels:
+      - "com.starry-code.service=redis"
+      - "com.starry-code.project=starry-code"
     command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
     ports:
       - "6379:6379"
