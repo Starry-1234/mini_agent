@@ -77,17 +77,22 @@ services:
 
   # R1a: Redis service for ShortTermStore. Sessions land here with
   # 24h TTL; Redis down → runtime falls back to in-memory.
+  #
+  # Persistence: RDB + AOF + RDB-AOF hybrid preamble.
+  # Config via mounted file (Redis 7.4 changed how CLI args parse
+  # multi-directive commands; using redis.conf is the canonical way).
   redis:
     image: redis:7-alpine
     container_name: starry-code-redis
     labels:
       - "com.starry-code.service=redis"
       - "com.starry-code.project=starry-code"
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
